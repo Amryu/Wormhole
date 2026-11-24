@@ -489,6 +489,12 @@ local function BuildPanel()
     f.none = f:CreateFontString(nil, "ARTWORK", "GameFontDisable")
     f.none:SetPoint("TOP", scroll, "TOP", 0, -30)
     f.none:SetText(L["No Offers"])
+    -- Until the first draw the panel is an empty list with the prompt, not every control at once.
+    f.none:Hide()
+    detail:Hide()
+    detail:SetHeight(60)
+    f.kinds.S:SetEnabled(ns.db.view ~= "S")
+    f.kinds.P:SetEnabled(ns.db.view ~= "P")
     f:Hide()
     return f
 end
@@ -600,7 +606,7 @@ function ns.InitWorldMap()
     mouse:RegisterEvent("GLOBAL_MOUSE_DOWN")
     mouse:RegisterEvent("GLOBAL_MOUSE_UP")
     mouse:SetScript("OnEvent", OnMouse)
-    C_Timer.NewTicker(0.2, function()
+    C_Timer.NewTicker(0.05, function()
         local fine, err = pcall(Watch)
         if not fine and not ns.mapError then
             ns.mapError = true
