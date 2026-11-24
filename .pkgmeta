@@ -1,0 +1,6 @@
+package-as: Wayfarer
+
+ignore:
+  - tests
+  - unused
+  - README.md

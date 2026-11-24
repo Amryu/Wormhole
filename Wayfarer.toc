@@ -1,0 +1,26 @@
+## Interface: 16001
+## Title: Wayfarer
+## Notes: Find and offer summons and portals on a map.
+## Notes-deDE: Beschwörungen und Portale auf einer Karte finden und anbieten.
+## Notes-frFR: Trouver et proposer invocations et portails sur une carte.
+## Notes-esES: Busca y ofrece invocaciones y portales en un mapa.
+## Notes-esMX: Busca y ofrece invocaciones y portales en un mapa.
+## Notes-itIT: Trova e offri evocazioni e portali su una mappa.
+## Notes-ptBR: Encontre e ofereça evocações e portais em um mapa.
+## Notes-ruRU: Поиск и предложение призывов и порталов на карте.
+## Author: Amryu
+## Version: @project-version@
+## X-License: MIT
+## IconTexture: Interface\Icons\Spell_Arcane_PortalStormwind
+## OptionalDeps: ForeverCore
+## SavedVariables: WayfarerDB
+## SavedVariablesPerCharacter: WayfarerCharDB
+
+Locales.lua
+Core.lua
+Net.lua
+UI.lua
+Requests.lua
+WorldMap.lua
+Minimap.lua
+Options.lua
