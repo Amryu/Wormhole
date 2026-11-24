@@ -4,3 +4,4 @@ ignore:
   - tests
   - unused
   - README.md
+  - media/logo.png
