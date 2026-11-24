@@ -2,7 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 -- A light list to keep open while playing: requests for a warlock or mage, calls for a clicker.
--- It is opened by hand (minimap button, My Offer, /wf requests) unless the player wants it to pop up.
+-- It is opened by hand (minimap button, My Offer, /wh requests) unless the player wants it to pop up.
 local ROWS = 16
 local ROW_H = 24
 local WIDTH, HEIGHT = 340, 190
@@ -77,7 +77,7 @@ local function Place(f)
 end
 
 local function Build()
-    local f = CreateFrame("Frame", "WayfarerRequestsFrame", UIParent)
+    local f = CreateFrame("Frame", "WormholeRequestsFrame", UIParent)
     local size = ns.db.requestsSize
     f:SetSize(size and size[1] or WIDTH, size and size[2] or HEIGHT)
     f:SetResizable(true)

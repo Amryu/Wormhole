@@ -1,5 +1,5 @@
 ## Interface: 16001
-## Title: Wayfarer
+## Title: Wormhole
 ## Notes: Find and offer summons and portals on a map.
 ## Notes-deDE: Beschwörungen und Portale auf einer Karte finden und anbieten.
 ## Notes-frFR: Trouver et proposer invocations et portails sur une carte.
@@ -11,10 +11,10 @@
 ## Author: Amryu
 ## Version: @project-version@
 ## X-License: MIT
-## IconTexture: Interface\AddOns\Wayfarer\media\Icon.tga
+## IconTexture: Interface\AddOns\Wormhole\media\Icon.tga
 ## OptionalDeps: ForeverCore
-## SavedVariables: WayfarerDB
-## SavedVariablesPerCharacter: WayfarerCharDB
+## SavedVariables: WormholeDB
+## SavedVariablesPerCharacter: WormholeCharDB
 
 Locales.lua
 Core.lua

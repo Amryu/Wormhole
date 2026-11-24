@@ -1,4 +1,4 @@
-# Wayfarer
+# Wormhole
 
 Find and offer warlock summons and mage portals in WoW Forever.
 
@@ -9,11 +9,11 @@ Find and offer warlock summons and mage portals in WoW Forever.
 
 ## Use
 
-- `/wf` opens the setup window.
-- `/wf on`, `/wf off` toggles your offer.
-- `/wf requests` opens requests or clicker jobs.
-- `/wf options` opens the options.
-- `/wf test` toggles test mode (act as any service, only other testers see the offer).
+- `/wh` opens the setup window.
+- `/wh on`, `/wh off` toggles your offer.
+- `/wh requests` opens requests or clicker jobs.
+- `/wh options` opens the options.
+- `/wh test` toggles test mode (act as any service, only other testers see the offer).
 
 ## Install
 

@@ -190,7 +190,7 @@ end
 
 function ns.UpdateWindow()
     if not (window and window:IsShown()) then return end
-    window.title:SetText(ns.testMode and ("Wayfarer (%s)"):format(L["Test Mode"]) or "Wayfarer")
+    window.title:SetText(ns.testMode and ("Wormhole (%s)"):format(L["Test Mode"]) or "Wormhole")
     local status, r, g, b = ns.NetStatus()
     window.net:SetText(status)
     window.net:SetTextColor(r, g, b)
@@ -314,7 +314,7 @@ end
 
 local function Build()
     local template = HasTemplate("BasicFrameTemplateWithInset")
-    local frame = CreateFrame("Frame", "WayfarerFrame", UIParent, template or "BackdropTemplate")
+    local frame = CreateFrame("Frame", "WormholeFrame", UIParent, template or "BackdropTemplate")
     frame:SetSize(WIDTH, HEIGHT)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("HIGH")
@@ -330,12 +330,12 @@ local function Build()
     end
     local title = frame.TitleText or frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     if not frame.TitleText then title:SetPoint("TOP", 0, -6) end
-    title:SetText("Wayfarer")
+    title:SetText("Wormhole")
     frame.title = title
     local close = frame.CloseButton or CreateFrame("Button", nil, frame, "UIPanelCloseButton")
     if not frame.CloseButton then close:SetPoint("TOPRIGHT", 2, 2) end
     close:SetScript("OnClick", function() frame:Hide() end)
-    tinsert(UISpecialFrames, "WayfarerFrame")
+    tinsert(UISpecialFrames, "WormholeFrame")
 
     BuildOffer(frame)
 

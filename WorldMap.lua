@@ -1,7 +1,7 @@
 local _, ns = ...
 local L = ns.L
 
--- Wayfarer inside the game's world map: a side tab on the quest log panel with the offer list, and
+-- Wormhole inside the game's world map: a side tab on the quest log panel with the offer list, and
 -- offers drawn on the map while that tab is selected.
 --
 -- The world map is touchy on this client (its gamepad interface runs the map's Lua from secure code), so:
@@ -390,7 +390,7 @@ local function BuildPanel()
 
     local title = f:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 12, -12)
-    title:SetText("Wayfarer")
+    title:SetText("Wormhole")
     f.net = f:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     f.net:SetPoint("TOPRIGHT", -12, -14)
 
@@ -478,7 +478,7 @@ local function BuildPanel()
     mine:SetPoint("BOTTOMRIGHT", -10, 10)
     mine:SetScript("OnClick", function() ns.ToggleWindow(true) end)
 
-    local scroll = CreateFrame("ScrollFrame", "WayfarerMapScroll", f, "UIPanelScrollFrameTemplate")
+    local scroll = CreateFrame("ScrollFrame", "WormholeMapScroll", f, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 10, -92)
     scroll:SetPoint("BOTTOMRIGHT", detail, "TOPRIGHT", -20, 10)
     f.content = CreateFrame("Frame", nil, scroll)
@@ -524,8 +524,8 @@ local function Select()
 end
 
 local function OwnTab()
-    tab = CreateFrame("Button", "WayfarerMapTab", QuestMapFrame, "LargeSideTabButtonTemplate")
-    tab.tooltipText = "Wayfarer"
+    tab = CreateFrame("Button", "WormholeMapTab", QuestMapFrame, "LargeSideTabButtonTemplate")
+    tab.tooltipText = "Wormhole"
     tab.activeAtlas, tab.inactiveAtlas = "questlog-tab-icon-quest", "questlog-tab-icon-quest-inactive"
     local stock = QuestMapFrame.MapLegendTab and QuestMapFrame.MapLegendTab:IsShown() and QuestMapFrame.MapLegendTab or QuestMapFrame.QuestsTab
     if stock then tab:SetPoint("TOP", stock, "BOTTOM", 0, -3) else tab:SetPoint("TOPLEFT", QuestMapFrame, "TOPRIGHT", 0, -40) end
@@ -567,14 +567,14 @@ local function Watch()
     DrawMap()
 end
 
--- Opens the world map on the Wayfarer tab.
+-- Opens the world map on the Wormhole tab.
 function ns.OpenWorldMap()
     if not panel or Combat() then return end
     if not WorldMapFrame:IsShown() and ToggleWorldMap then ToggleWorldMap() end
     if panel:IsShown() or not tab then return end
     local shared = ForeverCore and ForeverCore.QuestLogTabs
     if not picked and type(shared) == "table" and type(shared.Select) == "function" and shared.Selected then
-        pcall(shared.Select, "Wayfarer")
+        pcall(shared.Select, "Wormhole")
     elseif tab:GetScript("OnMouseUp") then
         tab:GetScript("OnMouseUp")(tab, "LeftButton")
     end
@@ -586,7 +586,7 @@ function ns.InitWorldMap()
     local shared = ForeverCore and ForeverCore.QuestLogTabs
     local ok = false
     if type(shared) == "table" and type(shared.Register) == "function" then
-        ok, tab = pcall(shared.Register, "Wayfarer", { name = "WayfarerMapTab", tooltip = "Wayfarer", panel = panel, order = 90 })
+        ok, tab = pcall(shared.Register, "Wormhole", { name = "WormholeMapTab", tooltip = "Wormhole", panel = panel, order = 90 })
         if ok and tab then
             tab.activeAtlas, tab.inactiveAtlas = "questlog-tab-icon-quest", "questlog-tab-icon-quest-inactive"
             pcall(tab.SetChecked, tab, false)

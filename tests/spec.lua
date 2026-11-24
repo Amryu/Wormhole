@@ -126,14 +126,14 @@ local function NewClient(name, class, spells)
     for _, file in ipairs({ "Locales.lua", "Core.lua", "Net.lua", "UI.lua", "Requests.lua", "WorldMap.lua", "Minimap.lua" }) do
         local chunk = assert(loadfile(file))
         setfenv(chunk, env)
-        chunk("Wayfarer", ns)
+        chunk("Wormhole", ns)
     end
     c.ns, c.env = ns, env
     -- Stands in for the world map tab being open.
     if not env.WorldMapFrame then ns.WorldMapActive = function() return c.browsing or false end end
     -- Core's frame is the first one created; Net's is created by StartNet.
     local core = c.frames[1]
-    core.scripts.OnEvent(core, "ADDON_LOADED", "Wayfarer")
+    core.scripts.OnEvent(core, "ADDON_LOADED", "Wormhole")
     core.scripts.OnEvent(core, "PLAYER_LOGIN")
     local net
     for _, frame in ipairs(c.frames) do
@@ -476,7 +476,7 @@ Check(not mapper.ns.WorldMapActive() and channel.Mapper == nil, "world map tab i
 mapper.map.shown = true
 local tabFrame
 for _, frame in ipairs(mapper.frames) do
-    if rawget(frame, "tooltipText") == "Wayfarer" then tabFrame = frame end
+    if rawget(frame, "tooltipText") == "Wormhole" then tabFrame = frame end
 end
 Check(tabFrame ~= nil, "side tab is created")
 tabFrame.scripts.OnMouseUp(tabFrame, "LeftButton")

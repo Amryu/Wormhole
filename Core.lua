@@ -7,7 +7,7 @@ ns.PORTALS = { 10059, 11416, 11419, 11417, 11418, 11420 }
 local FACTION_PORTALS = { Alliance = { 10059, 11416, 11419 }, Horde = { 11417, 11418, 11420 } }
 ns.SUMMON_SPELL = 698
 ns.NOTE_MAX = 60
-ns.LOGO = "Interface\\AddOns\\Wayfarer\\media\\Icon.tga"
+ns.LOGO = "Interface\\AddOns\\Wormhole\\media\\Icon.tga"
 ns.KIND_ICON = {
     S = "Interface\\Icons\\Spell_Shadow_Twilight",
     P = "Interface\\Icons\\Spell_Arcane_PortalStormwind",
@@ -49,7 +49,7 @@ ns.offers = {}
 ns.me = ""
 
 function ns.Print(msg)
-    print("|cffffd100Wayfarer|r: " .. msg)
+    print("|cffffd100Wormhole|r: " .. msg)
 end
 
 function ns.Money(copper)
@@ -491,9 +491,9 @@ frame:RegisterEvent("PLAYER_LOGIN")
 frame:SetScript("OnEvent", function(self, event, arg1, ...)
     if event == "ADDON_LOADED" then
         if arg1 ~= ADDON then return end
-        WayfarerDB = ns.ApplyDefaults(WayfarerDB or {}, ns.defaults)
-        WayfarerCharDB = ns.ApplyDefaults(WayfarerCharDB or {}, ns.charDefaults)
-        ns.db, ns.char = WayfarerDB, WayfarerCharDB
+        WormholeDB = ns.ApplyDefaults(WormholeDB or {}, ns.defaults)
+        WormholeCharDB = ns.ApplyDefaults(WormholeCharDB or {}, ns.charDefaults)
+        ns.db, ns.char = WormholeDB, WormholeCharDB
     elseif event == "PLAYER_LOGIN" then
         ns.me = UnitName("player")
         -- A service picked in test mode does not survive a login.
@@ -529,9 +529,9 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
     end
 end)
 
-SLASH_WAYFARER1 = "/wayfarer"
-SLASH_WAYFARER2 = "/wf"
-SlashCmdList.WAYFARER = function(msg)
+SLASH_WORMHOLE1 = "/wormhole"
+SLASH_WORMHOLE2 = "/wh"
+SlashCmdList.WORMHOLE = function(msg)
     msg = (msg or ""):lower():match("^%s*(.-)%s*$")
     if msg == "test" then
         ns.SetTestMode(not ns.testMode)

@@ -15,8 +15,8 @@ local L = ns.L
 --   Y type / N type                     request accepted / declined (whisper)
 --   C                                   request withdrawn (whisper)
 
-local PREFIX = "Wayfarer"
-local CHANNEL = "WayfarerNet"
+local PREFIX = "Wormhole"
+local CHANNEL = "WormholeNet"
 local BEAT = 60            -- seconds between offer broadcasts
 local EDIT_GAP = 5         -- soonest rebroadcast after an edit or move
 local ANSWER_GAP = 20      -- a query is answered only when the last broadcast is older
@@ -253,7 +253,7 @@ end
 function ns.Alert(text)
     if ns.db.sound and PlaySound and SOUNDKIT then pcall(PlaySound, SOUNDKIT.TELL_MESSAGE) end
     if text and ns.db.alertChat then ns.Print(text) end
-    if text and ns.db.alertScreen and UIErrorsFrame and UIErrorsFrame.AddMessage then UIErrorsFrame:AddMessage("Wayfarer: " .. text, 1, 0.82, 0) end
+    if text and ns.db.alertScreen and UIErrorsFrame and UIErrorsFrame.AddMessage then UIErrorsFrame:AddMessage("Wormhole: " .. text, 1, 0.82, 0) end
     if ns.FlashMinimapButton then ns.FlashMinimapButton() end
     if ns.db.autoOpen and ns.ShowRequests then ns.ShowRequests() end
 end

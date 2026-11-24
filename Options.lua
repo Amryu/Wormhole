@@ -2,7 +2,7 @@ local _, ns = ...
 local L = ns.L
 
 function ns.InitOptions()
-    local category = Settings.RegisterVerticalLayoutCategory("Wayfarer")
+    local category = Settings.RegisterVerticalLayoutCategory("Wormhole")
 
     local function Proxy(key, varType, label, after)
         local function Get() return ns.db[key] end
@@ -12,7 +12,7 @@ function ns.InitOptions()
             ns.Tick()
             ns.Refresh()
         end
-        return Settings.RegisterProxySetting(category, "WAYFARER_" .. key:upper(), varType, label, ns.defaults[key], Get, Set)
+        return Settings.RegisterProxySetting(category, "WORMHOLE_" .. key:upper(), varType, label, ns.defaults[key], Get, Set)
     end
 
     Settings.CreateCheckbox(category, Proxy("autoAfk", Settings.VarType.Boolean, L["Pause While AFK"]), L["Hides your offer while you are AFK."])
