@@ -597,7 +597,7 @@ function ns.WantedTick(now)
             changed = true
         elseif now - want.time > WANT_TTL then
             ns.CancelWant()
-            ns.Print(("%s: %s"):format(L["Wanted"], L["Expired"]))
+            ns.Print(("%s: %s"):format(L["Requests"], L["Expired"]))
             changed = true
         elseif want.state == "OPEN" and (now - sentAt >= WANT_BEAT or (answerAt and now >= answerAt)) then
             ns.wantMsg = EncodeWant(want)

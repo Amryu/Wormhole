@@ -8,7 +8,7 @@ Built for the Forever client (`_forever_`, interface 16001). It is not made for 
 - **Requests:** ask up to three providers at once, auto-retract after 60 seconds.
 - **Providers:** set fee, note and destinations, pause while AFK or in instances, auto invite.
 - **Clickers:** get called for summon jobs within a chosen range, paid by the warlock.
-- **Wanted:** mark a spot on the map and ask for a summon there. Accounts with a warlock are alerted when it is near one of their warlocks, logged in or not, or at a zone or place they watch.
+- **Requests for a spot:** mark a spot on the map and ask for a summon there. Accounts with a warlock are alerted when it is near one of their warlocks, logged in or not, or at a zone or place they watch.
 - **History:** agreed services with fee, money actually traded and completion, in the setup window.
 - **Guide:** short articles per workflow in the setup window (`/wh guide`).
 

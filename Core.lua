@@ -7,7 +7,7 @@ ns.PORTALS = { 10059, 11416, 11419, 11417, 11418, 11420 }
 local FACTION_PORTALS = { Alliance = { 10059, 11416, 11419 }, Horde = { 11417, 11418, 11420 } }
 ns.SUMMON_SPELL = 698
 ns.NOTE_MAX = 60
-ns.FEE_MAX = 99999999
+ns.FEE_MAX = 999900       -- 99 gold 99 silver
 ns.LOGO = "Interface\\AddOns\\Wormhole\\media\\Icon.tga"
 ns.BACKDROP = "Interface\\AddOns\\Wormhole\\media\\Backdrop.tga"
 ns.KIND_ICON = {
@@ -196,7 +196,7 @@ function ns.Roles()
 end
 
 function ns.KindName(kind)
-    return kind == "S" and L["Summoning"] or kind == "P" and L["Portals"] or kind == "W" and L["Wanted"] or L["Clicker"]
+    return kind == "S" and L["Summoning"] or kind == "P" and L["Portals"] or kind == "W" and L["Requests"] or L["Clicker"]
 end
 
 -- Maps ---------------------------------------------------------------------
@@ -541,6 +541,9 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         ns.db, ns.char = WormholeDB, WormholeCharDB
     elseif event == "PLAYER_LOGIN" then
         ns.me = UnitName("player")
+        -- Fees saved before the cap came in.
+        for kind, fee in pairs(ns.char.fee) do ns.char.fee[kind] = math.min(fee, ns.FEE_MAX) end
+        ns.char.clickerPay = math.min(ns.char.clickerPay or 0, ns.FEE_MAX)
         -- A service picked in test mode does not survive a login.
         local kind, changed = ClassKind(ns.char.kind or "")
         ns.char.kind = kind

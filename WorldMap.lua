@@ -43,7 +43,7 @@ local function Tip(self)
     elseif self.map then
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine(ns.MapName(self.map), 1, 1, 1)
-        GameTooltip:AddLine(("%s: %d"):format(ns.db.view == "W" and L["Wanted"] or L["Offers"], self.count or 0), 1, 0.82, 0)
+        GameTooltip:AddLine(("%s: %d"):format(ns.db.view == "W" and L["Requests"] or L["Offers"], self.count or 0), 1, 0.82, 0)
         GameTooltip:Show()
     end
 end
@@ -543,7 +543,8 @@ local function DrawPanel()
     local kind = db.view
     local map = WorldMapFrame:GetMapID()
     ns.FitBackdrop(panel.art, panel:GetWidth(), panel:GetHeight())
-    local third = (panel:GetWidth() - 28) / 3
+    -- Summoning and Wanted sit together; Portals stands apart behind a gap.
+    local third = (panel:GetWidth() - 20 - 2 - 16) / 3
     for name, button in pairs(panel.kinds) do
         if third > 40 then button:SetWidth(third) end
         button:SetEnabled(kind ~= name)
@@ -551,6 +552,14 @@ local function DrawPanel()
     local wanted = kind == "W"
     panel.filter:SetText(wanted and L["Alerts"] or L["Filter"])
     panel.pick:SetText((picking or draft) and (CANCEL or "Cancel") or L["Pick Destination"])
+    -- A destination to pick would read as a portal's; the button belongs to summons only.
+    local portals = kind == "P"
+    if panel.pick:IsShown() == portals then
+        panel.pick:SetShown(not portals)
+        panel.mine:ClearAllPoints()
+        panel.mine:SetPoint("BOTTOMRIGHT", -10, 10)
+        if portals then panel.mine:SetPoint("LEFT", panel, "LEFT", 10, 0) else panel.mine:SetPoint("LEFT", panel, "CENTER", 2, 0) end
+    end
     local scope = map and map ~= ns.RootMap() and map or nil
     local list = wanted and ns.WantedList(scope) or ns.List(kind, scope, Filter(), db.sort[kind], db.sortDown[kind])
     local count = #list > ROWS and ("%d/%d"):format(ROWS, #list) or tostring(#list)
@@ -559,6 +568,9 @@ local function DrawPanel()
     panel.net:SetText(status)
     panel.net:SetTextColor(r, g, b)
     local shown = math.min(#list, ROWS)
+    -- Rows span the list; the scroll child has no width of its own.
+    local span = panel.scroll:GetWidth()
+    if span and span > 100 then panel.content:SetWidth(span) end
     for index = 1, shown do
         local offer = list[index]
         local row = Row(index)
@@ -569,10 +581,15 @@ local function DrawPanel()
             row.label:SetText((offer.own and GREEN or offer.why and GOLD or "|cffffffff") .. ns.Where(offer) .. "|r")
             row.fee:SetText(offer.fee > 0 and ns.Money(offer.fee) or "")
             row.requested:SetShown(offer.state == "TAKING")
+            -- The place gets whatever the distance and reward do not need.
+            row.status:SetWidth(offer.dist and offer.dist < 10000 and 50 or 1)
+            row.fee:SetWidth(offer.fee > 0 and 64 or 1)
         else
             row.label:SetText(offer.own and (GREEN .. offer.name .. "|r") or offer.name)
             row.fee:SetText(ns.Money(offer.fee))
             row.requested:SetShown(request ~= nil and request.state ~= "DECLINED")
+            row.status:SetWidth(58)
+            row.fee:SetWidth(64)
         end
         row.status:SetText(StatusText(offer))
         row.picked:SetShown(offer.name == ns.selected)
@@ -655,10 +672,14 @@ local function BuildPanel()
     -- Three across; the width is set at each draw, when the panel has its size.
     f.kinds.S = Button(f, ns.KindName("S"))
     f.kinds.S:SetPoint("TOPLEFT", 10, -38)
-    f.kinds.P = Button(f, ns.KindName("P"))
-    f.kinds.P:SetPoint("LEFT", f.kinds.S, "RIGHT", 4, 0)
     f.kinds.W = Button(f, ns.KindName("W"))
-    f.kinds.W:SetPoint("LEFT", f.kinds.P, "RIGHT", 4, 0)
+    f.kinds.W:SetPoint("LEFT", f.kinds.S, "RIGHT", 2, 0)
+    f.kinds.P = Button(f, ns.KindName("P"))
+    f.kinds.P:SetPoint("TOPRIGHT", -10, -38)
+    local split = f:CreateTexture(nil, "ARTWORK")
+    split:SetSize(1, 18)
+    split:SetPoint("RIGHT", f.kinds.P, "LEFT", -8, 0)
+    split:SetColorTexture(1, 1, 1, 0.25)
     for kind, button in pairs(f.kinds) do
         button:SetWidth(86)
         button:SetScript("OnClick", function()
@@ -727,7 +748,7 @@ local function BuildPanel()
         return edit, mark
     end
     local goldMark, silverMark
-    f.gold, goldMark = Coin(44, 4, "Gold", rewardLabel, 14)
+    f.gold, goldMark = Coin(34, 2, "Gold", rewardLabel, 14)
     f.silver, silverMark = Coin(28, 2, "Silver", goldMark, 10)
     reward:Hide()
     f.note:SetPoint("RIGHT", -2, 0)
@@ -798,6 +819,7 @@ local function BuildPanel()
     mine:SetPoint("BOTTOMRIGHT", -10, 10)
     mine:SetPoint("LEFT", f, "CENTER", 2, 0)
     mine:SetScript("OnClick", function() ns.ToggleWindow(true) end)
+    f.mine = mine
 
     local scroll = CreateFrame("ScrollFrame", "WormholeMapScroll", f, "UIPanelScrollFrameTemplate")
     scroll:SetPoint("TOPLEFT", 10, -92)
@@ -821,12 +843,19 @@ end
 -- Tab ------------------------------------------------------------------------
 
 local function Paint()
-    local icon = tab and tab.Icon
-    if not icon then return end
+    if not tab then return end
     pcall(function()
-        icon:SetTexture(ns.KIND_ICON.P)
-        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        icon:SetSize(26, 26)
+        local icon = tab.Icon
+        -- A tab without an icon slot of its own gets one drawn on top.
+        if not icon then
+            icon = tab.wormholeIcon or tab:CreateTexture(nil, "OVERLAY")
+            tab.wormholeIcon = icon
+            icon:SetPoint("CENTER")
+        end
+        icon:SetTexture(ns.LOGO)
+        icon:SetTexCoord(0, 1, 0, 1)
+        icon:SetSize(28, 28)
+        if icon.SetDesaturated then icon:SetDesaturated(false) end
     end)
 end
 

@@ -118,7 +118,7 @@ end
 local function MoneyInput(parent, get, set)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(150, 24)
-    frame.gold = Edit(frame, 54, true, 4)
+    frame.gold = Edit(frame, 54, true, 2)
     frame.gold:SetPoint("LEFT", 6, 0)
     local goldIcon = Label(frame, "|TInterface\\MoneyFrame\\UI-GoldIcon:14:14|t")
     goldIcon:SetPoint("LEFT", frame.gold, "RIGHT", 3, 0)
@@ -212,7 +212,7 @@ local GUIDE = {
     { "Summary", {
         "Wormhole finds and offers summons and portals on the world map.",
         "Open the world map and pick the Wormhole tab.",
-        "Summoning and Portals list offers. Wanted lists requests for a summon to a spot.",
+        "Summoning and Portals list offers. Requests lists requests for a summon to a spot.",
         "What waits for you shows on the screen button and in the request list.",
         "/wh opens this window." } },
     { "Find Offers", {
@@ -233,10 +233,10 @@ local GUIDE = {
         "A summon needs two helpers. Warlocks call for them with Request Clickers.",
         "The clicker pay comes out of the warlock's fee.",
         "To take such jobs, pick the Clicker service and a range, then press Activate." } },
-    { "Wanted Alerts", {
+    { "Request Alerts", {
         "Works on every character of an account with a warlock.",
         "You are alerted when someone wants a summon near one of your warlocks, logged in or not.",
-        "In the Wanted view, Alerts adds zones, places and spots to watch.",
+        "In the Requests view, Alerts adds zones, places and spots to watch.",
         "Accepted on another character? Log in on the warlock within 15 minutes." } },
     { "History", {
         "Every agreed service is kept with its fee, the money actually traded and whether it was seen to complete.",
@@ -548,7 +548,7 @@ local function BuildOffer(frame)
     panel.autoClickers:SetPoint("TOPLEFT", X, -60)
 
     -- Wanted: summons to a spot, for every character of an account with a warlock.
-    local wanted = Label(panel, L["Wanted"])
+    local wanted = Label(panel, L["Requests"])
     wanted:SetPoint("TOPLEFT", X + 4, -104)
     panel.watchOn = Check(panel, L["Alert Me"], function() return ns.db.watchOn end, function(value) ns.db.watchOn = value end)
     panel.watchOn:SetPoint("TOPLEFT", X, -122)

@@ -195,7 +195,7 @@ Check(buyer.ns.WindowShown(), "setup window opens: " .. tostring(buyer.printed[#
 Check(buyer.ns.db.guideSeen == true, "the first open starts on the guide")
 do
     local pages = 0
-    for _, title in ipairs({ "Summary", "Find Offers", "Pick Destination", "My Offer", "Clickers", "Wanted Alerts", "History", "Credits" }) do
+    for _, title in ipairs({ "Summary", "Find Offers", "Pick Destination", "My Offer", "Clickers", "Request Alerts", "History", "Credits" }) do
         for _, frame in ipairs(buyer.frames) do
             if frame._text == title and frame.scripts.OnClick then
                 frame.scripts.OnClick(frame)
@@ -704,7 +704,7 @@ Check(not seek.ns.Listening() and seek.ns.CanTake({ name = "X" }) == false, "an 
 wl.ns.db.watchOn = false
 Check(not wl.ns.Listening(), "alerts off")
 Check(wl.ns.DecodeWant("W\t60\tabc\t1\t1\t0\t0\t0\tH") == nil and wl.ns.DecodeWant("W\t60\t1413\t20000\t1\t0\t0\t0\tH") == nil, "wanted codec rejects junk")
-Check(wl.ns.DecodeWant("W\t60\t1413\t1\t1\t1e30\t-5\t0\tH").fee == 99999999, "reward is capped")
+Check(wl.ns.DecodeWant("W\t60\t1413\t1\t1\t1e30\t-5\t0\tH").fee == 999900, "reward is capped")
 Check(wl.ns.DecodeWant("W\t60\t1413\t1\t1\t5\t0\t0\tA") == nil, "the other side's requests are dropped")
 Check(wl.ns.DecodeWant("W\t60\t9999\t1\t1\t5\t0\t0\tH") == nil, "unknown maps are dropped")
 seek.group = { "Friend" }
@@ -795,7 +795,7 @@ Check(ns.Decode("O\tS\t60\tabc\t1\t1\t0\t0\t0\t0\t") == nil, "bad map")
 Check(ns.Decode("O\tZ\t60\t1\t1\t1\t0\t0\t0\t0\t") == nil, "bad kind")
 Check(ns.Decode("O\tS\t60\t1\t20000\t1\t0\t0\t0\t0\t") == nil, "bad position")
 Check(ns.Decode("O\tP\t60\t1\t1\t1\t0\t\t0\t0\t") == nil, "portal offer without portals")
-Check(ns.Decode("O\tS\t60\t1\t1\t1\t1e30\t0\t0\t0\t").fee == 99999999, "fee is capped")
+Check(ns.Decode("O\tS\t60\t1\t1\t1\t1e30\t0\t0\t0\t").fee == 999900, "fee is capped")
 local back = ns.Decode(ns.Encode({ kind = "P", map = 1411, x = 0.1234, y = 0.9, fee = 12345, dests = { 3, 4 }, note = "a\tb" }, 150))
 Check(back.map == 1411 and back.x == 0.1234 and back.fee == 12345 and back.dests[2] == 4 and back.note == "a b" and back.ttl == 150, "codec round trip")
 

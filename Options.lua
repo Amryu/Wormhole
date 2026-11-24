@@ -29,7 +29,7 @@ function ns.InitOptions()
     Settings.CreateSlider(category, Proxy("orbScale", Settings.VarType.Number, L["Screen Button Size"], ns.UpdateOrb), size)
     Settings.CreateCheckbox(category, Proxy("autoOpen", Settings.VarType.Boolean, L["Open Requests Automatically"]),
         L["Opens the request window when a request or clicker job comes in."])
-    Settings.CreateCheckbox(category, Proxy("watchOn", Settings.VarType.Boolean, L["Wanted Alerts"]),
+    Settings.CreateCheckbox(category, Proxy("watchOn", Settings.VarType.Boolean, L["Request Alerts"]),
         L["Alerts you when someone wants a summon near one of your warlocks or at a place you watch."])
     Settings.CreateCheckbox(category, Proxy("alertChat", Settings.VarType.Boolean, L["Chat Message"]))
     Settings.CreateCheckbox(category, Proxy("alertScreen", Settings.VarType.Boolean, L["Screen Message"]))
