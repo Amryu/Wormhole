@@ -22,6 +22,8 @@ local pins, badges, rows = {}, {}, {}
 local active = false
 local picked = false       -- own tab selected (path without ForeverCore)
 local seen = ""
+local drawn = 0
+local mapStale, uncleared = false, false   -- combat held back a draw or a clear; done once it ends
 
 local function Combat()
     return InCombatLockdown and InCombatLockdown()
@@ -164,13 +166,15 @@ local function DrawMap()
         Place(pin, offer.x, offer.y, width, height, zoom)
     end
     for index = shown + 1, #pins do pins[index]:Hide() end
+    return true
 end
 
 local function ClearMap()
-    if Combat() then return end
+    if Combat() then return false end
     for _, list in ipairs({ pins, badges }) do
         for _, marker in ipairs(list) do marker:Hide() end
     end
+    return true
 end
 
 -- A left click on the hovered pin selects its offer in the side panel. Zone markers let the click through to
@@ -354,7 +358,7 @@ local function DrawPanel()
     if request and request.kind == "P" and request.state ~= "DECLINED" then state = ("%s: %s"):format(state, ns.PortalName(request.arg)) end
     panel.state:SetText(state)
     -- A portal offer has one button per city: clicking a city requests that portal.
-    local free = not offer.own and ns.OpenRequests() < ns.REQUEST_MAX
+    local free = not offer.own and ns.OpenRequests() < ns.REQUEST_MAX and ns.CanRequest(offer.name)
     local dests = offer.kind == "P" and not pending and offer.dests or {}
     panel.ask:SetShown(#dests > 0)
     for index, button in ipairs(panel.dests) do
@@ -560,18 +564,23 @@ local function Watch()
         seen = ""
         if active then
             ns.Tick()
-            if ns.net.joined then ns.Query() end
+            ns.Query()
         else
-            ClearMap()
+            uncleared = not ClearMap()
         end
     end
-    if not active then return end
+    if not active then
+        if uncleared then uncleared = not ClearMap() end
+        return
+    end
+    if mapStale and not Combat() and GetTime() - drawn > 1 then seen = "" end
     local zoom = WorldMapFrame.GetCanvasScale and WorldMapFrame:GetCanvasScale() or 1
     local stamp = table.concat({ tostring(WorldMapFrame:GetMapID()), tostring(zoom), tostring(layer and layer:GetWidth() or 0), ns.version or 0 }, ":")
     if stamp == seen then return end
     seen = stamp
+    drawn = GetTime()
     DrawPanel()
-    DrawMap()
+    mapStale = not DrawMap()
 end
 
 -- Opens the world map on the Wormhole tab.

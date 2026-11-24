@@ -111,7 +111,7 @@ end
 local function MoneyInput(parent, get, set)
     local frame = CreateFrame("Frame", nil, parent)
     frame:SetSize(150, 24)
-    frame.gold = Edit(frame, 54, true, 5)
+    frame.gold = Edit(frame, 54, true, 4)
     frame.gold:SetPoint("LEFT", 6, 0)
     local goldIcon = Label(frame, "|TInterface\\MoneyFrame\\UI-GoldIcon:14:14|t")
     goldIcon:SetPoint("LEFT", frame.gold, "RIGHT", 3, 0)
@@ -222,7 +222,13 @@ local function BuildOffer(frame)
         for index, kind in ipairs(roles) do
             if kind == char.kind then current = index end
         end
-        char.kind = roles[current % #roles + 1]
+        local kind = roles[current % #roles + 1]
+        -- What waited was meant for the old service.
+        if kind ~= char.kind then
+            ns.EndCall()
+            ns.DeclineAll()
+        end
+        char.kind = kind
         ns.Tick()
         ns.UpdateWindow()
     end)

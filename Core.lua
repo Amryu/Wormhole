@@ -7,6 +7,7 @@ ns.PORTALS = { 10059, 11416, 11419, 11417, 11418, 11420 }
 local FACTION_PORTALS = { Alliance = { 10059, 11416, 11419 }, Horde = { 11417, 11418, 11420 } }
 ns.SUMMON_SPELL = 698
 ns.NOTE_MAX = 60
+ns.FEE_MAX = 99999999
 ns.LOGO = "Interface\\AddOns\\Wormhole\\media\\Icon.tga"
 ns.KIND_ICON = {
     S = "Interface\\Icons\\Spell_Shadow_Twilight",
@@ -315,7 +316,7 @@ function ns.OwnOffer()
         if not lastPos then return end
         map, x, y = lastPos[1], lastPos[2], lastPos[3]
     end
-    local offer = { name = ns.me, kind = char.kind, map = map, x = x, y = y, fee = char.fee[char.kind] or 0, note = char.note or "", own = true,
+    local offer = { name = ns.me, kind = char.kind, map = map, x = x, y = y, fee = math.min(char.fee[char.kind] or 0, ns.FEE_MAX), note = char.note or "", own = true,
         test = ns.testMode or nil }
     if char.kind == "S" then
         offer.ready = ns.ClickersNearby()
@@ -523,7 +524,7 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         end
         ns.UpdateMinimapButton()
         ns.UpdateOrb()
-        for _, name in ipairs({ "PLAYER_FLAGS_CHANGED", "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE", "SPELLS_CHANGED" }) do
+        for _, name in ipairs({ "PLAYER_FLAGS_CHANGED", "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA", "GROUP_ROSTER_UPDATE", "SPELLS_CHANGED", "PLAYER_LOGOUT" }) do
             self:RegisterEvent(name)
         end
         ns.grouped = IsInGroup()
@@ -538,6 +539,8 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         ns.Tick()
     elseif event == "SPELLS_CHANGED" then
         portalCache = nil
+    elseif event == "PLAYER_LOGOUT" then
+        ns.Goodbye()
     else
         ns.Tick()
     end

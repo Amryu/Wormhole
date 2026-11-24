@@ -529,4 +529,12 @@ Check(ns.Decode("O\tS\t60\t1\t1\t1\t1e30\t0\t0\t0\t").fee == 99999999, "fee is c
 local back = ns.Decode(ns.Encode({ kind = "P", map = 1411, x = 0.1234, y = 0.9, fee = 12345, dests = { 3, 4 }, note = "a\tb" }, 150))
 Check(back.map == 1411 and back.x == 0.1234 and back.fee == 12345 and back.dests[2] == 4 and back.note == "a b" and back.ttl == 150, "codec round trip")
 
+-- A request needs a standing offer.
+Check(ns.CanRequest("Nobody") == false and ns.CanRequest(ns.me) == false, "no request without an offer")
+do
+    local template = "No player named '%s' is currently playing."
+    local pattern = template:gsub("[%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"):gsub("%%s", "(.+)")
+    Check(("No player named 'Lock' is currently playing."):match(pattern) == "Lock", "logged-off notice is read")
+end
+
 print(("%d checks passed"):format(passed))

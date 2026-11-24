@@ -29,7 +29,8 @@ local REQUEST_WAIT = 60    -- an unanswered request is withdrawn after this
 ns.REQUEST_MAX = 3         -- open requests one player may have
 local OFFER_MAX = 2000      -- offers kept; further senders are dropped
 local ALERT_GAP = 30        -- one sender alerts at most this often
-local FEE_MAX = 99999999
+local FEE_MAX = ns.FEE_MAX
+local REPLY_GAP = 5          -- one sender is told no at most this often
 
 ns.incoming, ns.outgoing, ns.calls = {}, {}, {}
 ns.net = { joined = false, refused = false }
@@ -37,7 +38,7 @@ ns.net = { joined = false, refused = false }
 local lastSent, lastSig, answerAt, wasLive = 0, nil, nil, false
 local lastStatus
 local lastJoin, idleSince, lastQuery = -1000, nil, -1000
-local alerted = {}
+local alerted, replied = {}, {}
 
 -- Offers arrive many a second on a busy server; the interface hears of them once a second.
 local pending = false
@@ -176,6 +177,14 @@ local function Prune(now)
     for name, time in pairs(alerted) do
         if now - time > ALERT_GAP then alerted[name] = nil end
     end
+    for name, time in pairs(replied) do
+        if now - time > REPLY_GAP then replied[name] = nil end
+    end
+    -- Calls are for a clicker on duty only.
+    if next(ns.calls) and not (ns.char.kind == "C" and ns.IsLive()) then
+        for name in pairs(ns.calls) do ns.calls[name] = nil end
+        changed = true
+    end
     for _, list in ipairs({ ns.incoming, ns.outgoing }) do
         for name, request in pairs(list) do
             if now - request.time > REQUEST_TTL then
@@ -196,7 +205,7 @@ local function Channel(now)
             ns.net.joined, ns.net.since = true, now
             HideChannel()
             lastSent = 0
-            if ns.Browsing() then ns.Query() end
+            if ns.Browsing() then ns.Query(true) end
         elseif not id then
             ns.net.joined = false
             if now - lastJoin > JOIN_RETRY then
@@ -216,9 +225,10 @@ local function Channel(now)
     end
 end
 
-function ns.Query()
+-- force: the channel was just joined, so the question goes out even if yell range was asked a moment ago.
+function ns.Query(force)
     local now = GetTime()
-    if now - lastQuery < 30 then return end
+    if not force and now - lastQuery < 30 then return end
     -- After a full round on the channel every offer has been heard already.
     if ns.net.joined and ns.net.since and now - ns.net.since > Beat() * 1.2 then return end
     lastQuery = now
@@ -295,10 +305,13 @@ end
 
 local function Invite(name)
     if Grouped(name) then return end
+    local invite = C_PartyInfo and C_PartyInfo.InviteUnit or InviteUnit
     if IsInGroup() and not IsInRaid() and GetNumGroupMembers() >= 5 and UnitIsGroupLeader("player") then
         pcall(C_PartyInfo and C_PartyInfo.ConvertToRaid or ConvertToRaid)
+        -- A full party refuses the invite until the conversion has landed.
+        return C_Timer.After(1, function() pcall(invite, name) end)
     end
-    pcall(C_PartyInfo and C_PartyInfo.InviteUnit or InviteUnit, name)
+    pcall(invite, name)
 end
 
 function ns.RequestLabel(kind, arg)
@@ -330,9 +343,14 @@ function ns.RetractAll()
     end
 end
 
-function ns.Request(name, kind, arg)
+-- Whether a request to this player may go out: the offer still stands and the last try is not too fresh.
+function ns.CanRequest(name)
     local old = ns.outgoing[name]
-    if name == ns.me or (old and GetTime() - old.time < REQUEST_GAP) then return end
+    return name ~= ns.me and ns.offers[name] ~= nil and not (old and GetTime() - old.time < REQUEST_GAP)
+end
+
+function ns.Request(name, kind, arg)
+    if not ns.CanRequest(name) then return end
     if ns.OpenRequests() >= ns.REQUEST_MAX then return ns.Print(L["Request Limit Reached"]) end
     if not CanJoin(name) then return ns.Print(L["Leave your group first."]) end
     ns.outgoing[name] = { name = name, kind = kind, arg = arg, time = GetTime(), state = "SENT" }
@@ -390,6 +408,13 @@ function ns.EndCall()
     if not ns.call then return end
     ns.call = nil
     Broadcast("E")
+    -- Clickers still waiting for an answer are told.
+    for name, request in pairs(ns.incoming) do
+        if request.kind == "A" then
+            ns.incoming[name] = nil
+            if not request.fake then Send("N\tA", "WHISPER", name) end
+        end
+    end
     ns.Refresh()
 end
 
@@ -492,7 +517,10 @@ local function OnRequest(name, kind, arg)
     if kind == "A" then return OnApply(name) end
     arg = tonumber(arg) or 0
     if not Wanted(kind, arg) or Count(ns.incoming) >= 20 then
-        if not ns.incoming[name] then Send("N\t" .. tostring(kind), "WHISPER", name) end
+        if not ns.incoming[name] and (not replied[name] or GetTime() - replied[name] > REPLY_GAP) then
+            replied[name] = GetTime()
+            Send("N\t" .. tostring(kind), "WHISPER", name)
+        end
         return
     end
     local fresh = not ns.incoming[name]
@@ -520,6 +548,28 @@ local function OnReply(name, accepted)
         ns.Print(("%s: %s"):format(name, L["Declined"]))
     end
     ns.Refresh()
+    -- The request button comes back once a new try is allowed.
+    C_Timer.After(REQUEST_GAP + 0.2, ns.Refresh)
+end
+
+-- The game says "no player named ..." when a request went to someone who logged off: the offer and the
+-- request are gone.
+local notFound
+local function OnSystem(text)
+    if notFound == nil then
+        local template = ERR_CHAT_PLAYER_NOT_FOUND_S
+        notFound = type(template) == "string" and template:gsub("[%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"):gsub("%%s", "(.+)") or false
+    end
+    local name = notFound and type(text) == "string" and text:match(notFound)
+    if not name then return end
+    name = Ambiguate(name, "none")
+    if not (ns.outgoing[name] or ns.offers[name]) or ns.offers[name] and (ns.offers[name].own or ns.offers[name].fake) then return end
+    ns.outgoing[name], ns.offers[name] = nil, nil
+    ns.Refresh()
+end
+
+function ns.Goodbye()
+    if wasLive then Broadcast("X") end
 end
 
 -- The game may send under a longer name than UnitName gives (a surname). The echo of the own offer
@@ -609,7 +659,9 @@ function ns.StartNet()
     C_ChatInfo.RegisterAddonMessagePrefix(PREFIX)
     local frame = CreateFrame("Frame")
     frame:RegisterEvent("CHAT_MSG_ADDON")
-    frame:SetScript("OnEvent", function(_, _, prefix, msg, dist, sender)
+    frame:RegisterEvent("CHAT_MSG_SYSTEM")
+    frame:SetScript("OnEvent", function(_, event, prefix, msg, dist, sender)
+        if event == "CHAT_MSG_SYSTEM" then return OnSystem(prefix) end
         if prefix == PREFIX and type(msg) == "string" and type(sender) == "string" then OnMessage(msg, dist, sender) end
     end)
     if ChatFrame_AddMessageEventFilter then
