@@ -24,6 +24,8 @@ local picked = false       -- own tab selected (path without ForeverCore)
 local seen = ""
 local drawn = 0
 local mapStale, uncleared = false, false   -- combat held back a draw or a clear; done once it ends
+local picking              -- the next click on the map is a spot: "WANT" for a request, "WATCH" for the watch list
+local draft                -- the spot picked for a request not posted yet
 
 local function Combat()
     return InCombatLockdown and InCombatLockdown()
@@ -41,7 +43,7 @@ local function Tip(self)
     elseif self.map then
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine(ns.MapName(self.map), 1, 1, 1)
-        GameTooltip:AddLine(("%s: %d"):format(L["Offers"], self.count or 0), 1, 0.82, 0)
+        GameTooltip:AddLine(("%s: %d"):format(ns.db.view == "W" and L["Wanted"] or L["Offers"], self.count or 0), 1, 0.82, 0)
         GameTooltip:Show()
     end
 end
@@ -122,7 +124,8 @@ local function DrawMap()
     local db = ns.db
     local kind = db.view
     local counts, order, here = {}, {}, {}
-    for _, offer in ipairs(ns.List(kind, nil, Filter(), db.sort[kind], db.sortDown[kind])) do
+    local all = kind == "W" and ns.WantedList() or ns.List(kind, nil, Filter(), db.sort[kind], db.sortDown[kind])
+    for _, offer in ipairs(all) do
         if offer.map == map then
             here[#here + 1] = offer
         else
@@ -140,7 +143,7 @@ local function DrawMap()
             used = used + 1
             local badge = Marker(badges, used)
             badge.map, badge.count, badge.offer = child, counts[child], nil
-            badge.icon:SetTexture(kind == "S" and ns.SpellIcon(ns.SUMMON_SPELL) or ns.KIND_ICON.P)
+            badge.icon:SetTexture(kind == "S" and ns.SpellIcon(ns.SUMMON_SPELL) or ns.KIND_ICON[kind])
             badge.edge:SetColorTexture(1, 0.82, 0, 1)
             badge.text:SetText(counts[child])
             badge:SetSize(16, 16)
@@ -158,12 +161,29 @@ local function DrawMap()
         pin.offer = offer
         pin.text:SetText("")
         pin:SetSize(chosen and 20 or 14, chosen and 20 or 14)
-        pin.icon:SetTexture(offer.kind == "S" and ns.SpellIcon(ns.SUMMON_SPELL) or ns.SpellIcon(offer.dests[1]))
+        pin.icon:SetTexture(offer.kind == "W" and ns.KIND_ICON.W or offer.kind == "S" and ns.SpellIcon(ns.SUMMON_SPELL)
+            or ns.SpellIcon(offer.dests[1]))
         if chosen then pin.edge:SetColorTexture(1, 1, 1, 1)
+        elseif offer.kind == "W" then
+            -- Blue: the own request or one being taken. Green: one that concerns this account.
+            if offer.own or offer.state then pin.edge:SetColorTexture(0.3, 0.8, 1, 1)
+            elseif offer.why then pin.edge:SetColorTexture(0.25, 1, 0.25, 1)
+            else pin.edge:SetColorTexture(1, 0.82, 0, 1) end
         elseif request and request.state ~= "DECLINED" then pin.edge:SetColorTexture(0.3, 0.8, 1, 1)
         elseif offer.kind == "S" and (offer.ready or 0) >= 2 then pin.edge:SetColorTexture(0.25, 1, 0.25, 1)
         else pin.edge:SetColorTexture(1, 0.82, 0, 1) end
         Place(pin, offer.x, offer.y, width, height, zoom)
+    end
+    -- The spot picked for a request that is not posted yet.
+    if kind == "W" and draft and draft.map == map then
+        shown = shown + 1
+        local pin = Marker(pins, shown)
+        pin.offer, pin.map = nil, nil
+        pin.text:SetText("")
+        pin:SetSize(20, 20)
+        pin.icon:SetTexture(ns.KIND_ICON.W)
+        pin.edge:SetColorTexture(1, 1, 1, 1)
+        Place(pin, draft.x, draft.y, width, height, zoom)
     end
     for index = shown + 1, #pins do pins[index]:Hide() end
     return true
@@ -179,13 +199,94 @@ end
 
 -- A left click on the hovered pin selects its offer in the side panel. Zone markers let the click through to
 -- the map below, which opens the zone.
+local pressX, pressY
+local pressMap, pressNX, pressNY   -- map and spot under the cursor at the press, before the map can react
+
+-- While picking, a plain mouse-enabled frame lies over the map view and swallows the click, so the map below
+-- does not open the zone under the cursor. It carries no script; the click is still read from the global events.
+local catcher
+local function Catch(on)
+    if not catcher then
+        if not on or Combat() then return end
+        local view = WorldMapFrame.ScrollContainer or (WorldMapFrame.GetCanvasContainer and WorldMapFrame:GetCanvasContainer())
+        if not view then return end
+        catcher = CreateFrame("Frame")
+        catcher:SetParent(view)
+        catcher:SetAllPoints(view)
+        catcher:SetFrameLevel(math.min(view:GetFrameLevel() + 2000, 9900))
+        catcher:EnableMouse(true)
+        if catcher.SetMouseClickEnabled then pcall(catcher.SetMouseClickEnabled, catcher, true) end
+        if catcher.SetPropagateMouseClicks then pcall(catcher.SetPropagateMouseClicks, catcher, false) end
+        catcher:Hide()
+    end
+    if catcher:IsShown() ~= on then catcher:SetShown(on) end
+end
+
+-- A continent or anything below it; the world map only leads to those.
+local function Pickable(map)
+    local info = map and C_Map.GetMapInfo(map)
+    return info ~= nil and (info.mapType or 0) >= 2
+end
+
+local function ZoneMap(map)
+    local info = map and C_Map.GetMapInfo(map)
+    return info ~= nil and (info.mapType or 0) >= 3
+end
+
+local function Cursor()
+    local ok, x, y = pcall(WorldMapFrame.GetNormalizedCursorPosition, WorldMapFrame)
+    if ok and type(x) == "number" and type(y) == "number" and x > 0 and x < 1 and y > 0 and y < 1 then return x, y end
+end
+
+-- The zone a spot lies in and where in it. A click on a continent map, or on a neighbour shown at the edge of
+-- a zone map, names the zone under the cursor.
+local function Resolve(map, x, y)
+    local ok, info = pcall(C_Map.GetMapInfoAtPosition, map, x, y)
+    if ok and info and info.mapID and info.mapID ~= map and (info.mapType or 0) >= 3 then
+        local fine, zx, zy = pcall(function()
+            local continent, world = C_Map.GetWorldPosFromMapPos(map, CreateVector2D(x, y))
+            local _, pos = C_Map.GetMapPosFromWorldPos(continent, world, info.mapID)
+            return pos.x, pos.y
+        end)
+        if fine and type(zx) == "number" and type(zy) == "number" and zx > 0 and zx < 1 and zy > 0 and zy < 1 then return info.mapID, zx, zy end
+    end
+    if ZoneMap(map) then return map, x, y end
+end
+
+-- While picking, a click on the map is the spot. A drag pans the map and is not one. The spot is the one under
+-- the cursor at the press, so it holds even where the map opens a zone on the release.
+local function Pick()
+    local cx, cy = GetCursorPosition()
+    if not pressX or math.abs(cx - pressX) > 6 or math.abs(cy - pressY) > 6 then return end
+    if not (pressMap and pressNX) then return end
+    local map, x, y = Resolve(pressMap, pressNX, pressNY)
+    if not map then return end
+    if picking == "WATCH" then
+        ns.WatchSpot(map, x, y)
+    else
+        draft = { map = map, x = x, y = y, area = ns.AreaAt(map, x, y) }
+        ns.selected = nil
+    end
+    picking = nil
+    seen = ""
+    ns.Refresh()
+end
+
 local function OnMouse(_, event, button)
     if button ~= "LeftButton" then return end
     if event == "GLOBAL_MOUSE_DOWN" then
         pressed = active and hovered or nil
+        pressX, pressY = GetCursorPosition()
+        pressMap, pressNX, pressNY = nil, nil, nil
+        local view = WorldMapFrame.ScrollContainer
+        if picking and active and not (view and view.IsMouseOver and not view:IsMouseOver()) then
+            pressMap = WorldMapFrame:GetMapID()
+            pressNX, pressNY = Cursor()
+        end
     else
         local marker = pressed
         pressed = nil
+        if picking and active then return Pick() end
         if not (marker and marker == hovered and active and marker.offer and marker:IsMouseOver()) then return end
         ns.selected = marker.offer.name
         seen = ""
@@ -257,7 +358,87 @@ local function FilterMenu(owner)
     end)
 end
 
+-- Wanted: what to be alerted for. Places are the viewed map's.
+local function WatchMenu(owner)
+    if not (MenuUtil and MenuUtil.CreateContextMenu) then return end
+    local db = ns.db
+    local map = WorldMapFrame:GetMapID()
+    local function Changed()
+        seen = ""
+        ns.Tick()
+        ns.Refresh()
+    end
+    MenuUtil.CreateContextMenu(owner, function(_, root)
+        if root.SetScrollMode then root:SetScrollMode(460) end
+        root:CreateTitle(L["Alerts"])
+        root:CreateCheckbox(L["Alert Me"], function() return db.watchOn end, function()
+            db.watchOn = not db.watchOn
+            Changed()
+        end)
+        root:CreateDivider()
+        root:CreateTitle(L["Near My Warlocks"])
+        local locks = ns.AllWarlocks()
+        if #locks == 0 then
+            local none = root:CreateButton(L["Needs a warlock."], function() end)
+            if none and none.SetEnabled then none:SetEnabled(false) end
+        end
+        for _, lock in ipairs(locks) do
+            root:CreateCheckbox(lock.name, function() return not ns.WarlockOff(lock.name) end, function()
+                ns.SetWarlockOff(lock.name, not ns.WarlockOff(lock.name))
+                Changed()
+            end)
+        end
+        for _, range in ipairs(ns.WATCH_RANGES) do
+            root:CreateRadio(range == 0 and L["Same Zone"] or ("%d %s"):format(range, L["yd"]), function() return db.watchRange == range end, function()
+                db.watchRange = range
+                Changed()
+            end)
+        end
+        if map and map ~= ns.RootMap() then
+            root:CreateDivider()
+            root:CreateTitle(ns.MapName(map))
+            root:CreateCheckbox(L["Whole Map"], function() return db.watchZones[map] == true end, function()
+                ns.WatchZone(map, not db.watchZones[map])
+                seen = ""
+            end)
+        end
+        if ZoneMap(map) then
+            for _, place in ipairs(ns.Places(map)) do
+                root:CreateCheckbox(place.name, function() return db.watchPlaces[place.key] ~= nil end, function()
+                    ns.WatchPlace(place, db.watchPlaces[place.key] == nil)
+                    seen = ""
+                end)
+            end
+            -- Spots picked by hand; unticking one drops it.
+            local spots = {}
+            for key, place in pairs(db.watchPlaces) do
+                if key:sub(1, 1) == "X" and place.map == map then spots[#spots + 1] = { key = key, text = ns.Where(place) } end
+            end
+            table.sort(spots, function(a, b) return a.key < b.key end)
+            for _, spot in ipairs(spots) do
+                root:CreateCheckbox(spot.text, function() return db.watchPlaces[spot.key] ~= nil end, function()
+                    db.watchPlaces[spot.key] = nil
+                    Changed()
+                end)
+            end
+            root:CreateButton(L["Pick a Spot"], function()
+                picking, draft = "WATCH", nil
+                seen = ""
+            end)
+        end
+        root:CreateDivider()
+        root:CreateButton(("%s (%d)"):format(L["Clear Watched"], ns.WatchCount()), function()
+            ns.ClearWatch()
+            seen = ""
+        end)
+    end)
+end
+
 local function StatusText(offer)
+    if offer.kind == "W" then
+        if offer.dist and offer.dist < 10000 then return ("%d %s"):format(offer.dist, L["yd"]) end
+        return ""
+    end
     if offer.kind == "S" then
         if (offer.ready or 0) >= 2 then return GREEN .. L["Ready"] .. "|r" end
         return ("%s%d/2|r"):format(ORANGE, offer.ready or 0)
@@ -309,14 +490,69 @@ local function Row(index)
     return row
 end
 
+-- The detail area of the Wanted view: picking a spot, the draft, or the selected request.
+local function DrawWanted(map)
+    panel.ask:Hide()
+    for _, button in ipairs(panel.dests) do button:Hide() end
+    if picking then
+        panel.detail:Hide()
+        panel.prompt:Show()
+        panel.prompt:SetText(Pickable(map) and L["Click the map."] or L["Open a zone map."])
+        panel.detail:SetHeight(60)
+        return
+    end
+    local entry = not draft and ns.selected and ns.wanted[ns.selected] or nil
+    panel.detail:SetShown(draft ~= nil or entry ~= nil)
+    panel.prompt:SetShown(not draft and not entry)
+    panel.prompt:SetText(L["Select a Request"])
+    if not draft and not entry then
+        panel.detail:SetHeight(60)
+        return
+    end
+    panel.detail:SetHeight(78 + 24)
+    panel.request:Show()
+    if draft then
+        panel.name:SetText(ns.Where(draft))
+        panel.where:SetText(("%s (%d, %d)"):format(ns.MapName(draft.map), draft.x * 100, draft.y * 100))
+        panel.note:SetText("")
+        panel.state:SetText("")
+        panel.request:SetText(L["Post Request"])
+        panel.request:SetEnabled(true)
+        return
+    end
+    panel.name:SetText(entry.name)
+    panel.where:SetText(ns.Where(entry))
+    panel.note:SetText(("%s: %s"):format(L["Reward"], entry.fee > 0 and ns.Money(entry.fee) or "-"))
+    if entry.own then
+        local taker = entry.taker
+        local who = taker and (taker.lock ~= taker.name and ("%s (%s)"):format(taker.name, taker.lock) or taker.name)
+        panel.state:SetText(taker and ("%s%s|r: %s"):format(GREEN, L["Accepted"], who) or (GOLD .. L["Open"] .. "|r"))
+        panel.request:SetText(L["Cancel Request"])
+        panel.request:SetEnabled(true)
+        return
+    end
+    local state = entry.state == "TAKING" and (GOLD .. L["Requested"] .. "|r") or #ns.AllWarlocks() == 0 and (GREY .. L["Needs a warlock."] .. "|r")
+        or entry.why and (GREEN .. ns.ReasonText(entry) .. "|r") or ""
+    panel.state:SetText(state)
+    panel.request:SetText(ACCEPT or "Accept")
+    panel.request:SetEnabled(ns.CanTake(entry))
+end
+
 local function DrawPanel()
     local db = ns.db
     local kind = db.view
     local map = WorldMapFrame:GetMapID()
-    panel.kinds.S:SetEnabled(kind ~= "S")
-    panel.kinds.P:SetEnabled(kind ~= "P")
+    ns.FitBackdrop(panel.art, panel:GetWidth(), panel:GetHeight())
+    local third = (panel:GetWidth() - 28) / 3
+    for name, button in pairs(panel.kinds) do
+        if third > 40 then button:SetWidth(third) end
+        button:SetEnabled(kind ~= name)
+    end
+    local wanted = kind == "W"
+    panel.filter:SetText(wanted and L["Alerts"] or L["Filter"])
+    panel.pick:SetText((picking or draft) and (CANCEL or "Cancel") or L["Pick Destination"])
     local scope = map and map ~= ns.RootMap() and map or nil
-    local list = ns.List(kind, scope, Filter(), db.sort[kind], db.sortDown[kind])
+    local list = wanted and ns.WantedList(scope) or ns.List(kind, scope, Filter(), db.sort[kind], db.sortDown[kind])
     local count = #list > ROWS and ("%d/%d"):format(ROWS, #list) or tostring(#list)
     panel.zone:SetText(("%s: %s%s|r"):format(map and ns.MapName(map) or "", GOLD, count))
     local status, r, g, b = ns.NetStatus()
@@ -328,16 +564,27 @@ local function DrawPanel()
         local row = Row(index)
         local request = ns.outgoing[offer.name]
         row.offer = offer
-        row.label:SetText(offer.own and (GREEN .. offer.name .. "|r") or offer.name)
+        if wanted then
+            -- The place is what a warlock reads first; who asks is in the detail below.
+            row.label:SetText((offer.own and GREEN or offer.why and GOLD or "|cffffffff") .. ns.Where(offer) .. "|r")
+            row.fee:SetText(offer.fee > 0 and ns.Money(offer.fee) or "")
+            row.requested:SetShown(offer.state == "TAKING")
+        else
+            row.label:SetText(offer.own and (GREEN .. offer.name .. "|r") or offer.name)
+            row.fee:SetText(ns.Money(offer.fee))
+            row.requested:SetShown(request ~= nil and request.state ~= "DECLINED")
+        end
         row.status:SetText(StatusText(offer))
-        row.fee:SetText(ns.Money(offer.fee))
         row.picked:SetShown(offer.name == ns.selected)
-        row.requested:SetShown(request ~= nil and request.state ~= "DECLINED")
         row:Show()
     end
     for index = shown + 1, #rows do rows[index]:Hide() end
     panel.content:SetHeight(math.max(shown * ROW_H, 1))
     panel.none:SetShown(#list == 0)
+    panel.none:SetText(wanted and L["No Requests"] or L["No Offers"])
+    panel.reward:SetShown(wanted and draft ~= nil and not picking)
+    if wanted then return DrawWanted(map) end
+    panel.prompt:SetText(L["Select an Offer"])
 
     local offer = ns.selected and ns.offers[ns.selected]
     if offer and offer.kind ~= kind then offer = nil end
@@ -385,6 +632,11 @@ local function BuildPanel()
     local back = f:CreateTexture(nil, "BACKGROUND")
     back:SetAllPoints()
     back:SetColorTexture(0.04, 0.04, 0.04, 0.96)
+    f.art = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    f.art:SetAllPoints()
+    f.art:SetTexture(ns.BACKDROP)
+    f.art:SetAlpha(0.9)
+    ns.FitBackdrop(f.art, 290, 470)
 
     local function Button(parent, text)
         local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -400,15 +652,18 @@ local function BuildPanel()
     f.net:SetPoint("TOPRIGHT", -12, -14)
 
     f.kinds = {}
+    -- Three across; the width is set at each draw, when the panel has its size.
     f.kinds.S = Button(f, ns.KindName("S"))
     f.kinds.S:SetPoint("TOPLEFT", 10, -38)
-    f.kinds.S:SetPoint("RIGHT", f, "CENTER", -2, 0)
     f.kinds.P = Button(f, ns.KindName("P"))
-    f.kinds.P:SetPoint("TOPRIGHT", -10, -38)
-    f.kinds.P:SetPoint("LEFT", f, "CENTER", 2, 0)
+    f.kinds.P:SetPoint("LEFT", f.kinds.S, "RIGHT", 4, 0)
+    f.kinds.W = Button(f, ns.KindName("W"))
+    f.kinds.W:SetPoint("LEFT", f.kinds.P, "RIGHT", 4, 0)
     for kind, button in pairs(f.kinds) do
+        button:SetWidth(86)
         button:SetScript("OnClick", function()
             if ns.db.view ~= kind then ns.selected = nil end
+            picking, draft = nil, nil
             ns.db.view = kind
             seen = ""
             ns.Refresh()
@@ -419,7 +674,9 @@ local function BuildPanel()
     f.filter = Button(f, L["Filter"])
     f.filter:SetWidth(100)
     f.filter:SetPoint("TOPRIGHT", -10, -64)
-    f.filter:SetScript("OnClick", function(self) FilterMenu(self) end)
+    f.filter:SetScript("OnClick", function(self)
+        if ns.db.view == "W" then WatchMenu(self) else FilterMenu(self) end
+    end)
 
     -- Selected offer.
     local detail = CreateFrame("Frame", nil, f)
@@ -443,6 +700,36 @@ local function BuildPanel()
     f.note:SetPoint("TOPLEFT", 2, -38)
     f.state = detail:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     f.state:SetPoint("TOPLEFT", 2, -56)
+    f.name:SetPoint("RIGHT", -2, 0)
+    f.name:SetJustifyH("LEFT")
+    f.name:SetWordWrap(false)
+    -- Wanted: what the poster pays the warlock, in gold and silver.
+    local reward = CreateFrame("Frame", nil, detail)
+    reward:SetPoint("TOPLEFT", 0, -40)
+    reward:SetPoint("RIGHT")
+    reward:SetHeight(24)
+    f.reward = reward
+    local rewardLabel = reward:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    rewardLabel:SetPoint("LEFT", 2, 0)
+    rewardLabel:SetText(L["Reward"])
+    local function Coin(width, letters, icon, after, gap)
+        local edit = CreateFrame("EditBox", nil, reward, "InputBoxTemplate")
+        edit:SetSize(width, 20)
+        edit:SetPoint("LEFT", after, "RIGHT", gap, 0)
+        edit:SetAutoFocus(false)
+        edit:SetNumeric(true)
+        edit:SetMaxLetters(letters)
+        edit:SetScript("OnEnterPressed", edit.ClearFocus)
+        edit:SetScript("OnEscapePressed", edit.ClearFocus)
+        local mark = reward:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        mark:SetPoint("LEFT", edit, "RIGHT", 3, 0)
+        mark:SetText(("|TInterface\\MoneyFrame\\UI-%sIcon:14:14|t"):format(icon))
+        return edit, mark
+    end
+    local goldMark, silverMark
+    f.gold, goldMark = Coin(44, 4, "Gold", rewardLabel, 14)
+    f.silver, silverMark = Coin(28, 2, "Silver", goldMark, 10)
+    reward:Hide()
     f.note:SetPoint("RIGHT", -2, 0)
     f.note:SetJustifyH("LEFT")
     f.note:SetWordWrap(false)
@@ -451,6 +738,22 @@ local function BuildPanel()
     f.request:SetPoint("TOPLEFT", 0, -78)
     f.request:SetPoint("RIGHT")
     f.request:SetScript("OnClick", function()
+        if ns.db.view == "W" then
+            local entry = ns.selected and ns.wanted[ns.selected]
+            if draft then
+                ns.PostWant(draft.map, draft.x, draft.y, (tonumber(f.gold:GetText()) or 0) * 10000 + (tonumber(f.silver:GetText()) or 0) * 100)
+                draft = nil
+                f.gold:ClearFocus()
+                f.silver:ClearFocus()
+                ns.selected = ns.me
+            elseif entry and entry.own then
+                ns.CancelWant()
+            elseif entry then
+                ns.Take(entry.name)
+            end
+            seen = ""
+            return
+        end
         local offer = ns.selected and ns.offers[ns.selected]
         if not offer then return end
         local request = ns.outgoing[offer.name]
@@ -478,9 +781,22 @@ local function BuildPanel()
         f.dests[index] = button
     end
 
+    -- No offer where the player wants to go: mark the spot and ask for a summon there.
+    f.pick = Button(f, L["Pick Destination"])
+    f.pick:SetPoint("BOTTOMLEFT", 10, 10)
+    f.pick:SetPoint("RIGHT", f, "CENTER", -2, 0)
+    f.pick:SetScript("OnClick", function()
+        if picking or draft then
+            picking, draft = nil, nil
+        else
+            ns.db.view, ns.selected, picking = "W", nil, "WANT"
+        end
+        seen = ""
+        ns.Refresh()
+    end)
     local mine = Button(f, L["My Offer"])
-    mine:SetPoint("BOTTOMLEFT", 10, 10)
     mine:SetPoint("BOTTOMRIGHT", -10, 10)
+    mine:SetPoint("LEFT", f, "CENTER", 2, 0)
     mine:SetScript("OnClick", function() ns.ToggleWindow(true) end)
 
     local scroll = CreateFrame("ScrollFrame", "WormholeMapScroll", f, "UIPanelScrollFrameTemplate")
@@ -497,8 +813,7 @@ local function BuildPanel()
     f.none:Hide()
     detail:Hide()
     detail:SetHeight(60)
-    f.kinds.S:SetEnabled(ns.db.view ~= "S")
-    f.kinds.P:SetEnabled(ns.db.view ~= "P")
+    for kind, button in pairs(f.kinds) do button:SetEnabled(ns.db.view ~= kind) end
     f:Hide()
     return f
 end
@@ -566,9 +881,11 @@ local function Watch()
             ns.Tick()
             ns.Query()
         else
+            picking = nil
             uncleared = not ClearMap()
         end
     end
+    Catch(active and picking ~= nil and Pickable(WorldMapFrame:GetMapID()))
     if not active then
         if uncleared then uncleared = not ClearMap() end
         return

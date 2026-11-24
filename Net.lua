@@ -14,6 +14,7 @@ local L = ns.L
 --   R type arg                          request (whisper). S summon, P portal (arg = spell), A clicker answering a call
 --   Y type / N type                     request accepted / declined (whisper)
 --   C                                   request withdrawn (whisper)
+-- Wanted.lua adds W, V, H and T for summons to a spot.
 
 local PREFIX = "Wormhole"
 local CHANNEL = "WormholeNet"
@@ -51,6 +52,7 @@ local function OffersChanged()
         ns.Refresh()
     end)
 end
+ns.OffersChanged = OffersChanged
 
 -- Whether this sender may sound an alert now.
 local function MayAlert(name)
@@ -59,6 +61,7 @@ local function MayAlert(name)
     alerted[name] = now
     return true
 end
+ns.MayAlert = MayAlert
 
 local function ChannelID()
     local id = GetChannelName(CHANNEL)
@@ -69,12 +72,14 @@ local function Send(msg, dist, target)
     local ok, result = pcall(C_ChatInfo.SendAddonMessage, PREFIX, msg, dist, target)
     return ok and (result == nil or result == true or result == 0)
 end
+ns.Send = Send
 
 local function Broadcast(msg)
     local id = ChannelID()
     if id then ns.net.refused = not Send(msg, "CHANNEL", id) end
     if not IsInInstance() then Send(msg, "YELL") end
 end
+ns.Broadcast = Broadcast
 
 local function HideChannel()
     local remove = ChatFrame_RemoveChannel or (ChatFrameUtil and ChatFrameUtil.RemoveChannel)
@@ -198,7 +203,7 @@ local function Prune(now)
 end
 
 local function Channel(now)
-    local want = ns.Browsing() or ns.IsLive()
+    local want = ns.Browsing() or ns.IsLive() or ns.WantsChannel()
     local id = ChannelID()
     if want then
         idleSince = nil
@@ -206,6 +211,7 @@ local function Channel(now)
             ns.net.joined, ns.net.since = true, now
             HideChannel()
             lastSent = 0
+            ns.WantedJoined()
             if ns.Browsing() then ns.Query(true) end
         elseif not id then
             ns.net.joined = false
@@ -244,6 +250,8 @@ function ns.Tick()
     local live = ns.IsLive() and ns.char.kind ~= "C"
     local changed = Prune(now)
     Channel(now)
+    changed = ns.WantedTick(now) or changed
+    ns.AnnounceTick(now)
     if live then
         local offer = ns.OwnOffer()
         if offer then
@@ -288,6 +296,7 @@ end
 local function Grouped(name)
     return UnitInParty(name) or UnitInRaid(name) or false
 end
+ns.Grouped = Grouped
 
 -- Whether an invite from this player can go out at all.
 function ns.CanInvite()
@@ -317,10 +326,13 @@ local function Invite(name)
     if IsInGroup() and not IsInRaid() and GetNumGroupMembers() >= 5 and UnitIsGroupLeader("player") then
         pcall(C_PartyInfo and C_PartyInfo.ConvertToRaid or ConvertToRaid)
         -- A full party refuses the invite until the conversion has landed.
+        ns.AnnounceInvite(name)
         return C_Timer.After(1, function() pcall(invite, name) end)
     end
     pcall(invite, name)
+    ns.AnnounceInvite(name)
 end
+ns.Invite = Invite
 
 function ns.RequestLabel(kind, arg)
     if kind == "S" then return L["Summon"] end
@@ -381,6 +393,9 @@ function ns.Answer(name, accept)
     end
     Send((accept and "Y\t" or "N\t") .. request.kind, "WHISPER", name)
     if accept then
+        -- A clicker is paid by this warlock; a customer pays the fee.
+        if request.kind == "A" then ns.Log(name, "A", "C", ns.char.clickerPay)
+        else ns.Log(name, request.kind, "P", ns.char.fee[request.kind], request.kind == "P" and request.arg or nil) end
         Invite(name)
         local call = ns.call
         if request.kind == "A" and call and not call.accepted[name] then
@@ -443,6 +458,7 @@ local function OnApply(name)
     call.accepted[name] = true
     call.count = call.count + 1
     Send("Y\tA", "WHISPER", name)
+    ns.Log(name, "A", "C", ns.char.clickerPay)
     Invite(name)
     ns.Print(("%s: %s"):format(name, L["Clicker"]))
     if call.count >= call.need then ns.EndCall() end
@@ -499,6 +515,7 @@ local function OnCallReply(name, accepted)
     if not call or call.state ~= "APPLIED" then return end
     if accepted then
         ns.Print(("%s: %s %s"):format(name, L["Accepted"], ns.Money(call.pay)))
+        ns.Log(name, "A", "P", call.pay)
         -- One job at a time.
         for other in pairs(ns.calls) do ns.calls[other] = nil end
     else
@@ -552,6 +569,7 @@ local function OnReply(name, accepted)
     if accepted then
         local offer = ns.offers[name]
         ns.Print(("%s: %s%s"):format(name, L["Accepted"], offer and (" " .. ns.Money(offer.fee)) or ""))
+        ns.Log(name, request.kind, "C", offer and offer.fee or 0, request.kind == "P" and request.arg or nil)
     else
         ns.Print(("%s: %s"):format(name, L["Declined"]))
     end
@@ -571,20 +589,24 @@ local function OnSystem(text)
     local name = notFound and type(text) == "string" and text:match(notFound)
     if not name then return end
     name = Ambiguate(name, "none")
-    if not (ns.outgoing[name] or ns.offers[name]) or ns.offers[name] and (ns.offers[name].own or ns.offers[name].fake) then return end
-    ns.outgoing[name], ns.offers[name] = nil, nil
-    ns.Refresh()
+    local changed = ns.JobGone(name)
+    if (ns.outgoing[name] or ns.offers[name]) and not (ns.offers[name] and (ns.offers[name].own or ns.offers[name].fake)) then
+        ns.outgoing[name], ns.offers[name] = nil, nil
+        changed = true
+    end
+    if changed then ns.Refresh() end
 end
 
 function ns.Goodbye()
     if wasLive then Broadcast("X") end
+    ns.WantedGoodbye()
 end
 
 -- The game may send under a longer name than UnitName gives (a surname). The echo of the own offer
 -- shows which, and it is remembered.
 local function IsMe(name, msg)
     if name == ns.me or name == ns.char.alias then return true end
-    if msg == lastMsg and (name:find(ns.me, 1, true) == 1 or ns.me:find(name, 1, true) == 1) then
+    if (msg == lastMsg or msg == ns.wantMsg) and (name:find(ns.me, 1, true) == 1 or ns.me:find(name, 1, true) == 1) then
         ns.char.alias = name
         if ns.offers[name] then
             ns.offers[name] = nil
@@ -601,6 +623,7 @@ local function OnMessage(msg, dist, sender)
     if C_FriendList and C_FriendList.IsIgnored and C_FriendList.IsIgnored(name) then return end
     local tag, a, b = strsplit("\t", msg)
     if dist == "WHISPER" then
+        if ns.WantedWhisper(name, tag, a) then return end
         if tag == "R" then OnRequest(name, a, b)
         elseif (tag == "Y" or tag == "N") and a == "A" then OnCallReply(name, tag == "Y")
         elseif tag == "Y" then OnReply(name, true)
@@ -611,6 +634,7 @@ local function OnMessage(msg, dist, sender)
         end
         return
     end
+    if ns.WantedBroadcast(name, tag, msg) then return end
     if tag == "O" then
         local offer = ns.Decode(msg)
         if not offer then return end

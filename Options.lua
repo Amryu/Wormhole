@@ -29,9 +29,15 @@ function ns.InitOptions()
     Settings.CreateSlider(category, Proxy("orbScale", Settings.VarType.Number, L["Screen Button Size"], ns.UpdateOrb), size)
     Settings.CreateCheckbox(category, Proxy("autoOpen", Settings.VarType.Boolean, L["Open Requests Automatically"]),
         L["Opens the request window when a request or clicker job comes in."])
+    Settings.CreateCheckbox(category, Proxy("watchOn", Settings.VarType.Boolean, L["Wanted Alerts"]),
+        L["Alerts you when someone wants a summon near one of your warlocks or at a place you watch."])
     Settings.CreateCheckbox(category, Proxy("alertChat", Settings.VarType.Boolean, L["Chat Message"]))
     Settings.CreateCheckbox(category, Proxy("alertScreen", Settings.VarType.Boolean, L["Screen Message"]))
     Settings.CreateCheckbox(category, Proxy("sound", Settings.VarType.Boolean, L["Request Sound"]))
+    local chat = L["In party or raid chat."]
+    Settings.CreateCheckbox(category, Proxy("announceInvite", Settings.VarType.Boolean, L["Announce Invites"]), chat)
+    Settings.CreateCheckbox(category, Proxy("announceTrade", Settings.VarType.Boolean, L["Announce Trades"]), chat)
+    Settings.CreateCheckbox(category, Proxy("announceCast", Settings.VarType.Boolean, L["Announce Casts"]), chat)
     Settings.CreateCheckbox(category, Proxy("worldMap", Settings.VarType.Boolean, L["World Map Tab"]), L["Needs a reload."])
     Settings.CreateCheckbox(category, Proxy("minimapShow", Settings.VarType.Boolean, L["Minimap Button"], ns.UpdateMinimapButton))
 

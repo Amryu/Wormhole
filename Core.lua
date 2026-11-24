@@ -9,10 +9,12 @@ ns.SUMMON_SPELL = 698
 ns.NOTE_MAX = 60
 ns.FEE_MAX = 99999999
 ns.LOGO = "Interface\\AddOns\\Wormhole\\media\\Icon.tga"
+ns.BACKDROP = "Interface\\AddOns\\Wormhole\\media\\Backdrop.tga"
 ns.KIND_ICON = {
     S = "Interface\\Icons\\Spell_Shadow_Twilight",
     P = "Interface\\Icons\\Spell_Arcane_PortalStormwind",
     C = "Interface\\Icons\\INV_Misc_Coin_02",
+    W = "Interface\\Icons\\INV_Misc_Map_01",
 }
 
 ns.defaults = {
@@ -34,6 +36,18 @@ ns.defaults = {
     dest = 0,
     sort = { S = "fee", P = "fee" },
     sortDown = { S = false, P = false },
+    -- Wanted: alerts for summons to a spot near one of the account's warlocks or at a watched place.
+    watchOn = true,
+    watchRange = 500,
+    watchZones = {},
+    watchPlaces = {},
+    warlocks = {},
+    jobs = {},
+    ledger = {},
+    -- Party or raid chat lines for what the addon does.
+    announceInvite = true,
+    announceTrade = true,
+    announceCast = true,
 }
 ns.charDefaults = {
     active = false,
@@ -48,6 +62,18 @@ ns.charDefaults = {
 
 ns.offers = {}
 ns.me = ""
+
+-- The square backdrop cut to a frame's shape from its middle, never stretched.
+function ns.FitBackdrop(texture, width, height)
+    if not width or not height or width <= 0 or height <= 0 then return end
+    if width < height then
+        local half = width / height / 2
+        texture:SetTexCoord(0.5 - half, 0.5 + half, 0, 1)
+    else
+        local half = height / width / 2
+        texture:SetTexCoord(0, 1, 0.5 - half, 0.5 + half)
+    end
+end
 
 function ns.Print(msg)
     print("|cffffd100Wormhole|r: " .. msg)
@@ -95,6 +121,7 @@ local function Known(id)
     if IsPlayerSpell and IsPlayerSpell(id) then return true end
     return IsSpellKnown and IsSpellKnown(id) or false
 end
+ns.Known = Known
 
 local function ScanSpellbook(visit)
     if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
@@ -169,7 +196,7 @@ function ns.Roles()
 end
 
 function ns.KindName(kind)
-    return kind == "S" and L["Summoning"] or kind == "P" and L["Portals"] or L["Clicker"]
+    return kind == "S" and L["Summoning"] or kind == "P" and L["Portals"] or kind == "W" and L["Wanted"] or L["Clicker"]
 end
 
 -- Maps ---------------------------------------------------------------------
@@ -268,6 +295,7 @@ local function World(map, x, y)
     local ok, continent, pos = pcall(C_Map.GetWorldPosFromMapPos, map, CreateVector2D(x, y))
     if ok and continent and pos then return continent, pos.x, pos.y end
 end
+ns.World = World
 
 -- Yards between the player and an offer; nil across continents.
 function ns.Distance(offer, here)
@@ -349,7 +377,9 @@ function ns.SetTestMode(on)
     portalCache = nil
     if ns.testMode then
         ns.AddTestOffers()
+        ns.AddTestWanted()
     else
+        ns.ClearTestWanted()
         for name, offer in pairs(ns.offers) do
             if offer.fake or offer.test then ns.offers[name] = nil end
         end
@@ -515,8 +545,9 @@ frame:SetScript("OnEvent", function(self, event, arg1, ...)
         local kind, changed = ClassKind(ns.char.kind or "")
         ns.char.kind = kind
         if changed then ns.char.active = false end
-        if ns.db.view ~= "S" and ns.db.view ~= "P" then ns.db.view = "S" end
+        if ns.db.view ~= "S" and ns.db.view ~= "P" and ns.db.view ~= "W" then ns.db.view = "S" end
         ns.StartNet()
+        ns.StartLedger()
         if ns.InitOptions then pcall(ns.InitOptions) end
         if ns.InitWorldMap then
             local ok, err = pcall(ns.InitWorldMap)
@@ -562,6 +593,14 @@ SlashCmdList.WORMHOLE = function(msg)
         ns.Print(ns.char.active and L["Offer Active"] or L["Offer Inactive"])
     elseif msg == "requests" or msg == "jobs" then
         ns.ShowRequests()
+    elseif msg == "wanted" then
+        ns.db.view = "W"
+        ns.Refresh()
+        ns.OpenWorldMap()
+    elseif msg == "guide" or msg == "help" then
+        ns.ToggleWindow(true, true)
+    elseif msg == "history" or msg == "ledger" then
+        ns.ToggleWindow(true, "ledger")
     elseif msg == "options" then
         if ns.OpenOptions then ns.OpenOptions() end
     else

@@ -34,7 +34,10 @@ local orb
 local function Waiting()
     local count = 0
     for _ in pairs(ns.char.kind == "C" and ns.calls or ns.incoming) do count = count + 1 end
-    return count
+    for _, job in ipairs(ns.Jobs()) do
+        if job.lock == ns.me then count = count + 1 end
+    end
+    return count + #ns.Matched()
 end
 
 local function BuildOrb()
@@ -110,7 +113,7 @@ function ns.UpdateOrb()
     orb:SetShown(show)
     if not show then return end
     orb:SetScale(ns.db.orbScale or 1)
-    orb.icon:SetDesaturated(not ns.IsLive())
+    orb.icon:SetDesaturated(not (ns.IsLive() or ns.Listening()))
     orb.count:SetText(count > 0 and count or "")
     orb.glow:SetShown(ns.attention == true and count > 0)
 end

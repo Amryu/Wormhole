@@ -21,6 +21,8 @@
 Locales.lua
 Core.lua
 Net.lua
+Wanted.lua
+Ledger.lua
 UI.lua
 Requests.lua
 WorldMap.lua

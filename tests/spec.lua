@@ -47,6 +47,11 @@ local function NewClient(name, class, spells)
     env.wipe = function(t) for k in pairs(t) do t[k] = nil end end
     env.tinsert = table.insert
     env.UnitName = function() return name end
+    env.GetRealmName = function() return "Realm" end
+    c.said = {}
+    env.SendChatMessage = function(text, where) c.said[#c.said + 1] = where .. " " .. text end
+    env.time = function() return 1000000 + clock end
+    env.GetCursorPosition = function() return c.cursor and c.cursor[1] or 0, c.cursor and c.cursor[2] or 0 end
     env.UnitClass = function() return class, class end
     env.UnitFactionGroup = function() return "Horde" end
     env.UnitIsAFK = function() return c.afk end
@@ -123,7 +128,7 @@ local function NewClient(name, class, spells)
         end,
     }
     local ns = {}
-    for _, file in ipairs({ "Locales.lua", "Core.lua", "Net.lua", "UI.lua", "Requests.lua", "WorldMap.lua", "Minimap.lua" }) do
+    for _, file in ipairs({ "Locales.lua", "Core.lua", "Net.lua", "Wanted.lua", "Ledger.lua", "UI.lua", "Requests.lua", "WorldMap.lua", "Minimap.lua" }) do
         local chunk = assert(loadfile(file))
         setfenv(chunk, env)
         chunk("Wormhole", ns)
@@ -182,11 +187,27 @@ Check(lock.ns.char.kind == "S" and mage.ns.char.kind == "P" and buyer.ns.char.ki
 Check(#mage.ns.KnownPortals() == 2, "known portals")
 
 -- Nobody browsing or offering: nobody in the channel.
-Check(next(channel) == nil, "channel stays empty while idle")
+Check(channel.Lock and not channel.Buyer and not channel.Mage and not channel.Click, "only an account with a warlock listens while idle")
 
 -- Offers reach a browsing player.
 buyer.ns.ToggleWindow(true)
 Check(buyer.ns.WindowShown(), "setup window opens: " .. tostring(buyer.printed[#buyer.printed]))
+Check(buyer.ns.db.guideSeen == true, "the first open starts on the guide")
+do
+    local pages = 0
+    for _, title in ipairs({ "Summary", "Find Offers", "Pick Destination", "My Offer", "Clickers", "Wanted Alerts", "History", "Credits" }) do
+        for _, frame in ipairs(buyer.frames) do
+            if frame._text == title and frame.scripts.OnClick then
+                frame.scripts.OnClick(frame)
+                pages = pages + 1
+                break
+            end
+        end
+    end
+    local credits = false
+    for _, frame in ipairs(buyer.frames) do credits = credits or false end
+    Check(pages == 8, "every guide article opens")
+end
 Browse(buyer)
 lock.ns.char.fee.S, lock.ns.char.note = 50000, "Stone at the gate|cff"
 lock.ns.SetActive(true)
@@ -518,10 +539,255 @@ pinFrame.scripts.OnEnter(pinFrame)
 mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_DOWN", "LeftButton")
 mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_UP", "LeftButton")
 Check(mapper.ns.selected == "Lock", "clicking a pin selects the offer")
+-- Wanted view: pick a spot on a zone map, post it, see it drawn.
+local function Clickable(text)
+    for _, frame in ipairs(mapper.frames) do
+        if frame._text == text and frame.scripts.OnClick then return frame end
+    end
+end
+mapper.ns.db.view = "W"
+mapper.ns.wanted.Far = { name = "Far", kind = "W", map = 1413, x = 0.2, y = 0.2, fee = 500, area = 0, seen = clock, ttl = 500 }
+mapper.ns.selected = "Far"
+mapper.ns.Refresh()
+Advance(2)
+Check(mapper.ns.mapError == nil, "wanted view draws: " .. tostring(mapper.printed[#mapper.printed]))
+local pickButton = Clickable("Pick Destination")
+Check(pickButton ~= nil, "pick button exists")
+pickButton.scripts.OnClick(pickButton)
+Advance(1)
+Check(pickButton._text == "Cancel" or pickButton._text == tostring(mapper.env.CANCEL), "picking can be cancelled")
+rawset(mapper.map, "GetNormalizedCursorPosition", function() return 0.3, 0.4 end)
+mapper.mapID = 1414
+mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_DOWN", "LeftButton")
+mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_UP", "LeftButton")
+Advance(1)
+Check(Clickable("Post Request") == nil, "open land on a continent map takes no spot")
+mapper.env.C_Map.GetMapInfoAtPosition = function(map) return map == 1414 and { mapID = 1411, mapType = 3 } or nil end
+mapper.env.C_Map.GetMapPosFromWorldPos = function() return 1, { x = 0.25, y = 0.35 } end
+mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_DOWN", "LeftButton")
+mapper.mapID = 1411
+mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_UP", "LeftButton")
+Advance(1)
+local zonePost = Clickable("Post Request")
+Check(zonePost ~= nil, "a click on a zone of a continent map picks a spot in that zone, though the map opens it")
+zonePost.scripts.OnClick(zonePost)
+Advance(1)
+Check(mapper.ns.want and mapper.ns.want.map == 1411 and mapper.ns.want.x == 0.25 and mapper.ns.want.y == 0.35, "in the zone's own coordinates")
+mapper.ns.CancelWant()
+mapper.env.C_Map.GetMapInfoAtPosition = function() end
+Advance(1)
+pickButton.scripts.OnClick(pickButton)
+Advance(1)
+mapper.mapID = 1413
+mapper.cursor = { 10, 10 }
+mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_DOWN", "LeftButton")
+mapper.cursor = { 80, 10 }
+mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_UP", "LeftButton")
+Advance(1)
+Check(Clickable("Post Request") == nil, "a drag is not a pick")
+mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_DOWN", "LeftButton")
+mouseFrame.scripts.OnEvent(mouseFrame, "GLOBAL_MOUSE_UP", "LeftButton")
+Advance(1)
+local post = Clickable("Post Request")
+Check(post ~= nil and mapper.ns.mapError == nil, "a click on a zone map is the spot: " .. tostring(mapper.printed[#mapper.printed]))
+post.scripts.OnClick(post)
+Advance(2)
+local posted = mapper.ns.want
+Check(posted and posted.map == 1413 and posted.x == 0.3 and posted.y == 0.4 and posted.state == "OPEN", "the request is posted")
+Check(mapper.ns.selected == "Mapper" and Clickable("Cancel Request") ~= nil and mapper.ns.mapError == nil, "own request is selected")
+mapper.ns.ShowRequests()
+mapper.ns.CancelWant()
+Check(mapper.ns.want == nil and mapper.ns.wanted.Mapper == nil, "own request cancelled")
+mapper.ns.db.view = "S"
 tabFrame.scripts.OnMouseUp(tabFrame, "LeftButton")
 Advance(2)
 Check(not mapper.ns.WorldMapActive(), "tab toggles back to the quest log")
 clients.Mapper, channel.Mapper = nil, nil
+
+-- Wanted: a summon to a spot. The account's warlocks decide who hears of it.
+for name in pairs(clients) do clients[name], channel[name] = nil, nil end
+local seek = NewClient("Seek", "ROGUE", {})
+local wl = NewClient("Wl", "WARLOCK", { [698] = true })
+local alt = NewClient("Alt", "HUNTER", {})
+seek.pos = { 1411, 0.9, 0.9 }
+alt.pos = { 1411, 0.9, 0.9 }
+Advance(15)
+Check(channel.Wl and not channel.Alt and not channel.Seek, "a warlock listens, others do not")
+Check(wl.ns.db.warlocks.Realm.Wl.map == 1413, "the warlock's position is saved for the account")
+alt.ns.db.warlocks.Realm = { Parked = { map = 1411, x = 0.3, y = 0.3, faction = "Horde" }, Enemy = { map = 1413, x = 0.5, y = 0.5, faction = "Alliance" } }
+Advance(5)
+Check(alt.ns.Listening() and #alt.ns.AllWarlocks() == 1, "an alt listens for its parked warlock, same side only")
+Advance(5)
+Check(channel.Alt, "the alt joins the channel")
+seek.ns.PostWant(1413, 0.52, 0.5, 30000)
+Advance(5)
+Check(channel.Seek and wl.ns.wanted.Seek and wl.ns.wanted.Seek.fee == 30000, "the request is heard")
+local hit = wl.ns.Matched()
+Check(#hit == 1 and hit[1].why == "NEAR" and hit[1].what == "Wl", "near the warlock played")
+Check(wl.printed[#wl.printed]:find("Seek: Summon to The Barrens %(52, 50%)"), "the warlock is alerted: " .. tostring(wl.printed[#wl.printed]))
+hit = alt.ns.Matched()
+Check(#hit == 1 and hit[1].why == "NEAR" and hit[1].what == "Parked", "near a warlock that is logged off")
+wl.ns.ShowRequests()
+alt.ns.ShowRequests()
+seek.ns.ShowRequests()
+wl.ns.OfferTooltip(wl.env.UIParent, wl.ns.wanted.Seek)
+-- Range and switches.
+alt.ns.db.watchRange = 100
+Check(#alt.ns.Matched() == 0, "out of range")
+alt.ns.db.watchRange = 0
+Check(#alt.ns.Matched() == 0, "another zone")
+alt.ns.WatchZone(1414, true)
+Check(alt.ns.Matched()[1].why == "ZONE", "a watched continent")
+alt.ns.ClearWatch()
+alt.ns.WatchSpot(1413, 0.5, 0.6)
+Check(alt.ns.Matched()[1].why == "PLACE" and alt.ns.WatchCount() == 1, "a watched spot")
+alt.ns.ClearWatch()
+alt.ns.db.watchRange = 500
+alt.ns.SetWarlockOff("Parked", true)
+Check(#alt.ns.Matched() == 0, "a warlock switched off")
+alt.ns.SetWarlockOff("Parked", false)
+alt.ns.HideWanted("Seek")
+Check(#alt.ns.Matched() == 0 and #alt.ns.WantedList() == 1, "put aside, still on the map")
+alt.ns.wanted.Seek.hidden = nil
+local sentBefore = wl.sent or 0
+Advance(70)
+Check(alt.ns.wanted.Seek and wl.ns.wanted.Seek and #wl.printed > 0, "the request is kept alive")
+Check((wl.sent or 0) == sentBefore, "listening sends nothing")
+-- The alt takes it for the parked warlock.
+alt.ns.Take("Seek")
+Check(seek.ns.want.state == "ACCEPTED" and seek.ns.want.taker.lock == "Parked" and seek.ns.want.taker.name == "Alt", "the poster agrees with the first taker")
+Check(alt.ns.db.jobs.Realm.Seek and alt.ns.db.jobs.Realm.Seek.lock == "Parked", "the accepted request is saved")
+Check(alt.printed[#alt.printed] == "|cffffd100Wormhole|r: Log in on Parked.", "the alt is told to relog: " .. tostring(alt.printed[#alt.printed]))
+Check(#alt.invited == 0, "the alt does not invite")
+Advance(2)
+Check(wl.ns.wanted.Seek == nil and #wl.ns.Matched() == 0, "taken requests vanish for others")
+seek.onAddon("Wormhole", "T\tOther", "WHISPER", "Stranger")
+Check(seek.ns.want.taker.name == "Alt", "a second taker is turned away")
+alt.ns.ShowRequests()
+-- The warlock logs in: the request is checked and the poster invited.
+local saved = alt.ns.db.jobs
+clients.Alt, channel.Alt = nil, nil
+local parked = NewClient("Parked", "WARLOCK", { [698] = true })
+parked.ns.db.jobs = saved
+parked.pos = { 1411, 0.3, 0.3 }
+Advance(15)
+Check(parked.invited[1] == "Seek" and seek.ns.want.taker.live == "Parked", "after the relog the warlock invites")
+parked.ns.ShowRequests()
+seek.ns.CancelWant()
+Check(parked.ns.db.jobs.Realm.Seek == nil, "a withdrawn request ends the job")
+-- A job outlives neither its time nor a new post.
+parked.ns.db.jobs.Realm.Old = { name = "Old", lock = "Parked", map = 1413, x = 0.1, y = 0.1, fee = 0, at = 1000000 + clock - 2000 }
+Advance(3)
+Check(parked.ns.db.jobs.Realm.Old == nil, "an old job is dropped")
+-- Taking on the warlock itself invites at once; arriving closes the request.
+seek.ns.PostWant(1413, 0.5, 0.52, 0)
+Advance(5)
+wl.ns.Take("Seek")
+Check(wl.invited[#wl.invited] == "Seek" and wl.ns.db.jobs.Realm.Seek.lock == "Wl", "the warlock played invites at once")
+seek.pos = { 1413, 0.5, 0.5 }
+Advance(3)
+Check(seek.ns.want == nil, "arriving closes the request")
+wl.ns.JobDone("Seek")
+Check(next(wl.ns.Jobs()) == nil, "job done")
+-- Withdrawn before anyone took it.
+seek.pos = { 1411, 0.9, 0.9 }
+seek.ns.PostWant(1413, 0.5, 0.52, 0)
+Advance(5)
+Check(wl.ns.wanted.Seek ~= nil, "posted again")
+seek.ns.CancelWant()
+Advance(2)
+Check(wl.ns.wanted.Seek == nil, "withdrawn requests vanish")
+Advance(70)
+Check(not channel.Seek, "the poster leaves the channel afterwards")
+-- No warlock, no alerts.
+Check(not seek.ns.Listening() and seek.ns.CanTake({ name = "X" }) == false, "an account without a warlock cannot take")
+wl.ns.db.watchOn = false
+Check(not wl.ns.Listening(), "alerts off")
+Check(wl.ns.DecodeWant("W\t60\tabc\t1\t1\t0\t0\t0\tH") == nil and wl.ns.DecodeWant("W\t60\t1413\t20000\t1\t0\t0\t0\tH") == nil, "wanted codec rejects junk")
+Check(wl.ns.DecodeWant("W\t60\t1413\t1\t1\t1e30\t-5\t0\tH").fee == 99999999, "reward is capped")
+Check(wl.ns.DecodeWant("W\t60\t1413\t1\t1\t5\t0\t0\tA") == nil, "the other side's requests are dropped")
+Check(wl.ns.DecodeWant("W\t60\t9999\t1\t1\t5\t0\t0\tH") == nil, "unknown maps are dropped")
+seek.group = { "Friend" }
+seek.ns.PostWant(1413, 0.5, 0.52, 0)
+Check(seek.ns.want == nil, "no request while grouped")
+seek.group = {}
+buyer = seek
+
+-- Ledger: agreements, traded money, completion.
+do
+    local function Event(c, ...) c.ns.ledgerFrame.scripts.OnEvent(c.ns.ledgerFrame, ...) end
+    local book = wl.ns.db.ledger
+    Check(#book == 1 and book[1].who == "Seek" and book[1].kind == "W" and book[1].role == "P", "a taken request is booked by the warlock")
+    local mine = seek.ns.db.ledger
+    Check(#mine == 2 and mine[1].who == "Parked" and mine[2].who == "Wl" and mine[2].done == true, "the poster books the summoner, done on arrival")
+    -- A trade with the partner is the payment; one with a stranger is nobody's business.
+    wl.env.UnitName = function(unit) return unit == "NPC" and wl.partner or "Wl" end
+    wl.env.GetPlayerTradeMoney = function() return 0 end
+    wl.env.GetTargetTradeMoney = function() return wl.money end
+    wl.env.ERR_TRADE_COMPLETE = "Trade complete."
+    wl.partner, wl.money = "Seek", 25000
+    Event(wl, "TRADE_SHOW")
+    Event(wl, "TRADE_ACCEPT_UPDATE", 1, 1)
+    Event(wl, "UI_INFO_MESSAGE", 1, "Trade complete.")
+    Check(book[1].paid == 25000, "the traded money is booked")
+    wl.partner = "Nobody"
+    Event(wl, "TRADE_SHOW")
+    Event(wl, "TRADE_ACCEPT_UPDATE", 1, 1)
+    Event(wl, "UI_INFO_MESSAGE", 1, "Trade complete.")
+    Check(#book == 1 and book[1].paid == 25000, "other trades are not recorded")
+    Event(wl, "TRADE_SHOW")
+    wl.partner = "Seek"
+    Event(wl, "TRADE_REQUEST_CANCEL")
+    Event(wl, "UI_INFO_MESSAGE", 1, "Trade complete.")
+    Check(book[1].paid == 25000, "a cancelled trade pays nothing")
+    -- The ritual cast on the customer completes the service.
+    wl.env.Ambiguate = function(n) return n end
+    Check(not book[1].done, "not done before the cast")
+    Event(wl, "UNIT_SPELLCAST_SENT", "player", "Seek", "cast", 698)
+    Event(wl, "UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 698)
+    Check(book[1].done == true, "the summon cast completes it")
+    Check(#wl.said == 0, "nothing is announced without a group")
+    wl.group = { "Seek" }
+    wl.ns.Log("Seek", "S", "P", 25000)
+    wl.ns.AnnounceInvite("Seek")
+    Check(wl.said[1] == "PARTY [Wormhole] Invited Seek: Summon, 2g 50s", "invite announced: " .. tostring(wl.said[1]))
+    wl.partner = "Seek"
+    Event(wl, "TRADE_SHOW")
+    Event(wl, "TRADE_ACCEPT_UPDATE", 1, 1)
+    Event(wl, "UI_INFO_MESSAGE", 1, "Trade complete.")
+    Check(wl.said[2] == "PARTY [Wormhole] Seek paid 2g 50s", "trade announced: " .. tostring(wl.said[2]))
+    Event(wl, "UNIT_SPELLCAST_SENT", "player", "Seek", "cast", 698)
+    Event(wl, "UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 698)
+    Check(wl.said[3] == "PARTY [Wormhole] Summoning Seek", "cast announced: " .. tostring(wl.said[3]))
+    wl.ns.db.announceInvite, wl.ns.db.announceTrade, wl.ns.db.announceCast = false, false, false
+    wl.ns.AnnounceInvite("Seek")
+    Event(wl, "UNIT_SPELLCAST_SENT", "player", "Seek", "cast", 698)
+    Event(wl, "UNIT_SPELLCAST_SUCCEEDED", "player", "cast", 698)
+    Check(#wl.said == 3, "switched off, nothing is said")
+    wl.ns.db.announceInvite = true
+    wl.group = {}
+    wl.ns.AnnounceInvite("Late")
+    wl.group = { "Late" }
+    Advance(3)
+    Check(wl.said[4] == "PARTY [Wormhole] Invited Late", "a first invite is announced once the group exists: " .. tostring(wl.said[4]))
+    wl.group = {}
+    wl.ns.ClearLedger()
+    wl.ns.Log("Seek", "W", "P", 0)
+    wl.ns.db.ledger[1].paid, wl.ns.db.ledger[1].done = 25000, true
+    book = wl.ns.db.ledger
+    local list, earned, spent = wl.ns.Ledger()
+    Check(#list == 1 and earned == 25000 and spent == 0, "totals")
+    wl.ns.Log("A", "S", "P", 100)
+    wl.ns.Log("A", "S", "P", 200)
+    Check(#book == 2 and book[2].fee == 200, "a repeated agreement is one record")
+    wl.ns.ToggleWindow(true, "ledger")
+    for index = 1, 320 do book[#book + 1] = { t = 1000000 + clock, me = "Wl", realm = "Realm", who = "P" .. index, kind = "S", role = "P", fee = 0 } end
+    wl.ns.Log("Last", "P", "C", 5, 11417)
+    Check(#book == 300 and book[300].who == "Last", "the ledger is capped")
+    wl.ns.UpdateWindow()
+    wl.ns.ClearLedger()
+    Check(#wl.ns.db.ledger == 0, "cleared")
+end
 
 -- Codec rejects junk.
 local ns = buyer.ns

@@ -8,15 +8,73 @@ local ROW_H = 24
 local WIDTH, HEIGHT = 340, 190
 local frame
 
+-- What waits, in the order it is dealt with: requests or clicker jobs, accepted summons to a spot, the own
+-- request for one, then the wanted summons that concern this account.
 local function Entries()
     local clicker = ns.char.kind == "C"
     local list = {}
-    for _, entry in pairs(clicker and ns.calls or ns.incoming) do list[#list + 1] = entry end
+    for _, entry in pairs(clicker and ns.calls or ns.incoming) do list[#list + 1] = { type = clicker and "call" or "in", entry = entry, time = entry.time } end
     table.sort(list, function(a, b)
         if a.time ~= b.time then return a.time < b.time end
+        return a.entry.name < b.entry.name
+    end)
+    for _, job in ipairs(ns.Jobs()) do list[#list + 1] = { type = "job", entry = job } end
+    if ns.want then list[#list + 1] = { type = "own", entry = ns.want } end
+    local matched = ns.Matched()
+    table.sort(matched, function(a, b)
+        if a.seen ~= b.seen then return a.seen < b.seen end
         return a.name < b.name
     end)
+    for _, entry in ipairs(matched) do list[#list + 1] = { type = "want", entry = entry } end
     return list, clicker
+end
+
+local ARROW = "|cff808080>|r "
+
+local function DrawRow(row, item)
+    local entry = item.entry
+    row.type, row.name, row.entry = item.type, entry.name, entry
+    row.accept:Show()
+    row.accept:SetText(ACCEPT or "Accept")
+    row.accept:SetEnabled(true)
+    row.decline:SetText(DECLINE or "Decline")
+    if item.type == "call" then
+        local dist = entry.dist and ("  %d %s"):format(entry.dist, L["yd"]) or ""
+        row.text:SetText(("%s  |cffffffff%s|r%s"):format(entry.name, ns.Money(entry.pay), dist))
+        row.accept:SetEnabled(not entry.state)
+        row.decline:SetText(HIDE or "Hide")
+    elseif item.type == "in" then
+        row.text:SetText(("%s  |cffffffff%s|r"):format(entry.name, ns.RequestLabel(entry.kind, entry.arg)))
+    elseif item.type == "want" then
+        local tip = entry.fee > 0 and ("  " .. ns.Money(entry.fee)) or ""
+        row.text:SetText(("%s  %s|cffffffff%s|r%s"):format(entry.name, ARROW, ns.Where(entry), tip))
+        row.accept:SetEnabled(ns.CanTake(entry))
+        row.decline:SetText(HIDE or "Hide")
+    elseif item.type == "job" then
+        local mine = entry.lock == ns.me
+        row.text:SetText(("|cff40ff40%s|r  %s|cffffffff%s|r%s"):format(entry.name, ARROW, ns.Where(entry), mine and "" or ("  (%s)"):format(entry.lock)))
+        row.accept:SetText(INVITE or "Invite")
+        row.accept:SetEnabled(mine)
+        row.decline:SetText(DONE or "Done")
+    else
+        local taker = entry.taker
+        local state = taker and ("|cff40ff40%s|r: %s"):format(L["Accepted"], taker.lock) or ("|cffffd100%s|r"):format(L["Open"])
+        row.text:SetText(("%s|cffffffff%s|r  %s"):format(ARROW, ns.Where(entry), state))
+        row.accept:Hide()
+        row.decline:SetText(CANCEL or "Cancel")
+    end
+end
+
+local function RowTip(row)
+    local entry = row.entry
+    if not entry or not (row.type == "want" or row.type == "job" or row.type == "own") then return end
+    GameTooltip:SetOwner(row, "ANCHOR_TOPLEFT")
+    GameTooltip:AddDoubleLine(entry.name, (entry.fee or 0) > 0 and ns.Money(entry.fee) or "", 1, 1, 1, 1, 1, 1)
+    GameTooltip:AddLine(L["Summon to %s"]:format(ns.Where(entry)), 1, 0.82, 0, true)
+    local reason = row.type == "want" and ns.ReasonText(entry)
+    if reason then GameTooltip:AddLine(reason, 0.25, 1, 0.25) end
+    if row.type == "job" and entry.lock ~= ns.me then GameTooltip:AddLine(L["Log in on %s."]:format(entry.lock), 1, 0.5, 0.25) end
+    GameTooltip:Show()
 end
 
 function ns.UpdateRequests()
@@ -25,20 +83,9 @@ function ns.UpdateRequests()
     local kind = ns.char.kind
     frame.title:SetText(clicker and L["Clicker Jobs"] or L["Requests"])
     for index, row in ipairs(frame.rows) do
-        local entry = list[index]
-        row:SetShown(entry ~= nil)
-        if entry then
-            row.name = entry.name
-            if clicker then
-                local dist = entry.dist and ("  %d %s"):format(entry.dist, L["yd"]) or ""
-                row.text:SetText(("%s  |cffffffff%s|r%s"):format(entry.name, ns.Money(entry.pay), dist))
-                row.accept:SetEnabled(not entry.state)
-            else
-                row.text:SetText(("%s  |cffffffff%s|r"):format(entry.name, ns.RequestLabel(entry.kind, entry.arg)))
-                row.accept:SetEnabled(true)
-            end
-            row.decline:SetText(clicker and (HIDE or "Hide") or (DECLINE or "Decline"))
-        end
+        local item = list[index]
+        row:SetShown(item ~= nil)
+        if item then DrawRow(row, item) end
     end
     local offer = ns.offers[ns.me]
     local live = ns.IsLive()
@@ -48,7 +95,7 @@ function ns.UpdateRequests()
     for index = fit + 1, ROWS do frame.rows[index]:Hide() end
     frame.more:SetText(#list > fit and ("+%d"):format(#list - fit) or "")
     frame.empty:SetShown(#list == 0)
-    frame.empty:SetText(not live and L["Inactive"] or clicker and L["No Jobs"] or L["No Requests"])
+    frame.empty:SetText(not (live or ns.Listening()) and L["Inactive"] or clicker and L["No Jobs"] or L["No Requests"])
 
     -- Warlock: clickers at hand, and the call for more.
     frame.clickers:SetShown(warlock)
@@ -61,7 +108,7 @@ function ns.UpdateRequests()
         frame.call:SetEnabled(not call and ready < 2)
     end
     frame.declineAll:SetShown(not clicker)
-    frame.declineAll:SetEnabled(#list > 0)
+    frame.declineAll:SetEnabled(next(ns.incoming) ~= nil)
     frame.off:SetText(ns.char.active and L["Deactivate"] or L["Activate"])
     if ns.FlashMinimapButton then ns.FlashMinimapButton(false) end
 end
@@ -132,15 +179,25 @@ local function Build()
         row.decline = Button(row, 72)
         row.decline:SetPoint("RIGHT")
         row.decline:SetScript("OnClick", function()
-            if ns.char.kind == "C" then ns.Dismiss(row.name) else ns.Answer(row.name, false) end
+            if row.type == "call" then ns.Dismiss(row.name)
+            elseif row.type == "want" then ns.HideWanted(row.name)
+            elseif row.type == "job" then ns.JobDone(row.name)
+            elseif row.type == "own" then ns.CancelWant()
+            else ns.Answer(row.name, false) end
             ns.UpdateRequests()
         end)
         row.accept = Button(row, 72, ACCEPT or "Accept")
         row.accept:SetPoint("RIGHT", row.decline, "LEFT", -4, 0)
         row.accept:SetScript("OnClick", function()
-            if ns.char.kind == "C" then ns.Apply(row.name) else ns.Answer(row.name, true) end
+            if row.type == "call" then ns.Apply(row.name)
+            elseif row.type == "want" then ns.Take(row.name)
+            elseif row.type == "job" then ns.JobInvite(row.name)
+            elseif row.type == "in" then ns.Answer(row.name, true) end
             ns.UpdateRequests()
         end)
+        row:EnableMouse(true)
+        row:SetScript("OnEnter", RowTip)
+        row:SetScript("OnLeave", GameTooltip_Hide)
         f.rows[index] = row
     end
     f.empty = f:CreateFontString(nil, "ARTWORK", "GameFontDisable")
