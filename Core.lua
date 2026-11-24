@@ -7,6 +7,7 @@ ns.PORTALS = { 10059, 11416, 11419, 11417, 11418, 11420 }
 local FACTION_PORTALS = { Alliance = { 10059, 11416, 11419 }, Horde = { 11417, 11418, 11420 } }
 ns.SUMMON_SPELL = 698
 ns.NOTE_MAX = 60
+ns.LOGO = "Interface\\AddOns\\Wayfarer\\media\\Icon.tga"
 ns.KIND_ICON = {
     S = "Interface\\Icons\\Spell_Shadow_Twilight",
     P = "Interface\\Icons\\Spell_Arcane_PortalStormwind",
