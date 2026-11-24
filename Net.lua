@@ -35,6 +35,7 @@ ns.incoming, ns.outgoing, ns.calls = {}, {}, {}
 ns.net = { joined = false, refused = false }
 
 local lastSent, lastSig, answerAt, wasLive = 0, nil, nil, false
+local lastStatus
 local lastJoin, idleSince, lastQuery = -1000, nil, -1000
 local alerted = {}
 
@@ -255,6 +256,12 @@ function ns.Tick()
     end
     if live ~= wasLive then changed = true end
     wasLive = live
+    -- Joining takes a moment and nothing else redraws when it lands.
+    local status = ns.NetStatus()
+    if status ~= lastStatus then
+        lastStatus = status
+        changed = true
+    end
     if changed then ns.Refresh() end
 end
 
@@ -593,7 +600,8 @@ end
 
 function ns.NetStatus()
     if ns.net.joined and not ns.net.refused then return L["Connected"], 0.25, 1, 0.25 end
-    if ns.net.joined then return L["Nearby Only"], 1, 0.5, 0.25 end
+    -- The join was asked for and did not happen: offers still travel in yell range.
+    if ns.net.joined or (lastJoin > 0 and GetTime() - lastJoin > 8) then return L["Nearby Only"], 1, 0.5, 0.25 end
     return L["Connecting"], 0.6, 0.6, 0.6
 end
 
