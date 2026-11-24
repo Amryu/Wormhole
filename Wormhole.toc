@@ -11,6 +11,7 @@
 ## Author: Amryu
 ## Version: @project-version@
 ## X-License: MIT
+## X-Curse-Project-ID: 1827982
 ## IconTexture: Interface\AddOns\Wormhole\media\Icon.tga
 ## OptionalDeps: ForeverCore
 ## SavedVariables: WormholeDB
