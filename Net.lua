@@ -30,13 +30,14 @@ ns.REQUEST_MAX = 3         -- open requests one player may have
 local OFFER_MAX = 2000      -- offers kept; further senders are dropped
 local ALERT_GAP = 30        -- one sender alerts at most this often
 local FEE_MAX = ns.FEE_MAX
+local PAUSE_KEEP = 120       -- requests survive a pause (AFK, instance) this long
 local REPLY_GAP = 5          -- one sender is told no at most this often
 
 ns.incoming, ns.outgoing, ns.calls = {}, {}, {}
 ns.net = { joined = false, refused = false }
 
 local lastSent, lastSig, answerAt, wasLive = 0, nil, nil, false
-local lastStatus
+local lastStatus, pausedAt
 local lastJoin, idleSince, lastQuery = -1000, nil, -1000
 local alerted, replied = {}, {}
 
@@ -262,6 +263,13 @@ function ns.Tick()
         Broadcast("X")
         lastSig = nil
         ns.EndCall()
+        -- Switched off by hand: everyone waiting is told no. A pause keeps them for a while.
+        if not ns.char.active or ns.char.kind == "C" then ns.DeclineAll() else pausedAt = now end
+    end
+    if live then
+        pausedAt = nil
+    elseif pausedAt and (not ns.char.active or now - pausedAt > PAUSE_KEEP) then
+        pausedAt = nil
         ns.DeclineAll()
     end
     if live ~= wasLive then changed = true end

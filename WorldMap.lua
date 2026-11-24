@@ -596,7 +596,12 @@ function ns.OpenWorldMap()
     end
 end
 
+function ns.WorldMapReady()
+    return panel ~= nil
+end
+
 function ns.InitWorldMap()
+    if panel or Combat() then return end
     if not ns.db.worldMap or not (WorldMapFrame and QuestMapFrame and WorldMapFrame.GetCanvas) then return end
     panel = BuildPanel()
     local shared = ForeverCore and ForeverCore.QuestLogTabs

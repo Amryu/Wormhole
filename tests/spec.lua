@@ -302,10 +302,14 @@ lock.group = { "Click", "Buyer" }
 Advance(8)
 Check(buyer.ns.offers.Lock.ready == 2, "clickers nearby are broadcast")
 
--- AFK pauses and withdraws; coming back restores.
+-- AFK pauses and withdraws; coming back restores. Whoever waits is kept for two minutes.
+lock.ns.incoming.Waiter = { name = "Waiter", kind = "S", arg = 0, time = clock }
 lock.afk = true
 Advance(3)
 Check(not lock.ns.IsLive() and buyer.ns.offers.Lock == nil, "afk withdraws the offer")
+Check(lock.ns.incoming.Waiter ~= nil, "a pause keeps the requests")
+Advance(125)
+Check(lock.ns.incoming.Waiter == nil, "a long pause declines them")
 lock.ns.db.autoAfk = false
 Advance(8)
 Check(buyer.ns.offers.Lock ~= nil, "afk pause can be switched off")

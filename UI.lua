@@ -353,7 +353,14 @@ local function Build()
     local find = Button(frame, 150, L["Find Offers"])
     find:SetHeight(22)
     find:SetPoint("RIGHT", options, "LEFT", -4, 0)
-    find:SetScript("OnClick", function() if ns.OpenWorldMap then ns.OpenWorldMap() end end)
+    find:SetScript("OnClick", function()
+        -- Offers live on the world map tab; asking for them switches a disabled tab back on.
+        if not ns.WorldMapReady() and not ns.db.worldMap then
+            ns.db.worldMap = true
+            if pcall(ns.InitWorldMap) and ns.WorldMapReady() then ns.Print(("%s: %s"):format(L["World Map Tab"], L["Active"])) end
+        end
+        ns.OpenWorldMap()
+    end)
     frame.net = Label(frame, "", "GameFontHighlight")
     frame.net:SetPoint("BOTTOMLEFT", 180, 13)
 
