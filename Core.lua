@@ -185,9 +185,16 @@ local function Parent(map)
 end
 ns.ParentMap = Parent
 
+local names = {}
 function ns.MapName(map)
-    local info = map and C_Map.GetMapInfo(map)
-    return info and info.name or "?"
+    if not map then return "?" end
+    local name = names[map]
+    if not name then
+        local info = C_Map.GetMapInfo(map)
+        name = info and info.name or "?"
+        names[map] = name
+    end
+    return name
 end
 
 function ns.InMap(map, root)
@@ -417,11 +424,18 @@ function ns.List(kind, map, filter, key, down)
     filter = filter or {}
     key = key or "fee"
     local here = ns.Here()
+    local hc, hx, hy
+    if here then hc, hx, hy = World(here[1], here[2], here[3]) end
     local out = {}
     for _, offer in pairs(ns.offers) do
         if offer.kind == kind and (not map or ns.InMap(offer.map, map)) then
             offer.zone = ns.MapName(offer.map)
-            offer.dist = ns.Distance(offer, here)
+            -- An offer's table is replaced when it moves, so its world position is worked out once.
+            if offer.wc == nil then
+                local c, x, y = World(offer.map, offer.x, offer.y)
+                offer.wc, offer.wx, offer.wy = c or false, x, y
+            end
+            offer.dist = hc and offer.wc == hc and math.sqrt((hx - offer.wx) ^ 2 + (hy - offer.wy) ^ 2) or nil
             if Matches(offer, filter) then out[#out + 1] = offer end
         end
     end

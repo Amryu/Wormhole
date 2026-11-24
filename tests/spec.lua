@@ -332,7 +332,10 @@ Check(buyer.ns.offers.Mage == nil and buyer.ns.offers.Lock ~= nil, "silent offer
 
 -- Steady state stays quiet: one broadcast a minute per offer.
 lock.sent = 0
+local kept = buyer.ns.offers.Lock
+local heard = kept.seen
 Advance(120)
+Check(buyer.ns.offers.Lock == kept and kept.seen > heard, "a heartbeat only refreshes the offer it repeats")
 -- Each beat is one channel message and one yell.
 Check(lock.sent <= 4, "heartbeat rate, sent " .. lock.sent)
 
@@ -522,6 +525,7 @@ Check(ns.Decode("O\tS\t60\tabc\t1\t1\t0\t0\t0\t0\t") == nil, "bad map")
 Check(ns.Decode("O\tZ\t60\t1\t1\t1\t0\t0\t0\t0\t") == nil, "bad kind")
 Check(ns.Decode("O\tS\t60\t1\t20000\t1\t0\t0\t0\t0\t") == nil, "bad position")
 Check(ns.Decode("O\tP\t60\t1\t1\t1\t0\t\t0\t0\t") == nil, "portal offer without portals")
+Check(ns.Decode("O\tS\t60\t1\t1\t1\t1e30\t0\t0\t0\t").fee == 99999999, "fee is capped")
 local back = ns.Decode(ns.Encode({ kind = "P", map = 1411, x = 0.1234, y = 0.9, fee = 12345, dests = { 3, 4 }, note = "a\tb" }, 150))
 Check(back.map == 1411 and back.x == 0.1234 and back.fee == 12345 and back.dests[2] == 4 and back.note == "a b" and back.ttl == 150, "codec round trip")
 

@@ -14,7 +14,7 @@ local L = ns.L
 -- When ForeverCore is installed its shared tab column is used, so the tab lines up with the other addons' tabs.
 
 local ROW_H = 22
-local ROWS = 40
+local ROWS = 100
 local GREEN, GREY, GOLD, RED, ORANGE = "|cff40ff40", "|cff808080", "|cffffd100", "|cffff4040", "|cffff9040"
 
 local panel, tab, layer
@@ -313,7 +313,8 @@ local function DrawPanel()
     panel.kinds.P:SetEnabled(kind ~= "P")
     local scope = map and map ~= ns.RootMap() and map or nil
     local list = ns.List(kind, scope, Filter(), db.sort[kind], db.sortDown[kind])
-    panel.zone:SetText(("%s: %s%d|r"):format(map and ns.MapName(map) or "", GOLD, #list))
+    local count = #list > ROWS and ("%d/%d"):format(ROWS, #list) or tostring(#list)
+    panel.zone:SetText(("%s: %s%s|r"):format(map and ns.MapName(map) or "", GOLD, count))
     local status, r, g, b = ns.NetStatus()
     panel.net:SetText(status)
     panel.net:SetTextColor(r, g, b)

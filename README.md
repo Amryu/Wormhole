@@ -1,6 +1,8 @@
 # Wormhole
 
-Find and offer warlock summons and mage portals in WoW Forever.
+An addon for **WoW Forever**: find and offer warlock summons and mage portals on the world map.
+
+Built for the Forever client (`_forever_`, interface 16001). It is not made for Retail or Classic.
 
 - **World map tab:** offers per zone, pins for each provider, fees, filters and sorting.
 - **Requests:** ask up to three providers at once, auto-retract after 60 seconds.

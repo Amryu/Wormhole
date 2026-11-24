@@ -27,12 +27,35 @@ local REQUEST_GAP = 20
 local CALL_TTL = 60        -- how long a call for clickers stays open
 local REQUEST_WAIT = 60    -- an unanswered request is withdrawn after this
 ns.REQUEST_MAX = 3         -- open requests one player may have
+local OFFER_MAX = 2000      -- offers kept; further senders are dropped
+local ALERT_GAP = 30        -- one sender alerts at most this often
+local FEE_MAX = 99999999
 
 ns.incoming, ns.outgoing, ns.calls = {}, {}, {}
 ns.net = { joined = false, refused = false }
 
 local lastSent, lastSig, answerAt, wasLive = 0, nil, nil, false
 local lastJoin, idleSince, lastQuery = -1000, nil, -1000
+local alerted = {}
+
+-- Offers arrive many a second on a busy server; the interface hears of them once a second.
+local pending = false
+local function OffersChanged()
+    if pending then return end
+    pending = true
+    C_Timer.After(1, function()
+        pending = false
+        ns.Refresh()
+    end)
+end
+
+-- Whether this sender may sound an alert now.
+local function MayAlert(name)
+    local now = GetTime()
+    if alerted[name] and now - alerted[name] < ALERT_GAP then return false end
+    alerted[name] = now
+    return true
+end
 
 local function ChannelID()
     local id = GetChannelName(CHANNEL)
@@ -85,11 +108,11 @@ function ns.Decode(msg)
     ttl, map, x, y, fee = tonumber(ttl), tonumber(map), tonumber(x), tonumber(y), tonumber(fee)
     if not (ttl and map and x and y and fee) or x < 0 or x > 10000 or y < 0 or y > 10000 or fee < 0 then return end
     local offer = { kind = kind, ttl = math.max(30, math.min(ttl, 900)), map = map, x = x / 10000, y = y / 10000,
-        fee = math.floor(fee), note = Clean(note), test = test or nil }
+        fee = math.min(math.floor(fee), FEE_MAX), note = Clean(note), test = test or nil }
     if kind == "S" then
         offer.ready = math.max(0, math.min(tonumber(a) or 0, 2))
         offer.hire = b == "1"
-        offer.pay = math.max(0, math.floor(tonumber(c) or 0))
+        offer.pay = math.max(0, math.min(math.floor(tonumber(c) or 0), FEE_MAX))
     elseif kind == "P" then
         offer.dests = {}
         for id in tostring(a or ""):gmatch("%d+") do
@@ -149,6 +172,9 @@ local function Prune(now)
         end
     end
     if ns.call and now - ns.call.time > CALL_TTL then ns.EndCall() end
+    for name, time in pairs(alerted) do
+        if now - time > ALERT_GAP then alerted[name] = nil end
+    end
     for _, list in ipairs({ ns.incoming, ns.outgoing }) do
         for name, request in pairs(list) do
             if now - request.time > REQUEST_TTL then
@@ -166,7 +192,7 @@ local function Channel(now)
     if want then
         idleSince = nil
         if id and not ns.net.joined then
-            ns.net.joined = true
+            ns.net.joined, ns.net.since = true, now
             HideChannel()
             lastSent = 0
             if ns.Browsing() then ns.Query() end
@@ -192,6 +218,8 @@ end
 function ns.Query()
     local now = GetTime()
     if now - lastQuery < 30 then return end
+    -- After a full round on the channel every offer has been heard already.
+    if ns.net.joined and ns.net.since and now - ns.net.since > Beat() * 1.2 then return end
     lastQuery = now
     Broadcast("Q")
 end
@@ -367,7 +395,7 @@ local function OnApply(name)
         -- The warlock picks: the clicker waits in the request list.
         if not ns.incoming[name] then
             ns.incoming[name] = { name = name, kind = "A", arg = 0, time = GetTime() }
-            ns.Alert(("%s: %s"):format(name, L["Clicker"]))
+            if MayAlert(name) then ns.Alert(("%s: %s"):format(name, L["Clicker"])) end
             ns.Refresh()
         end
         return
@@ -400,7 +428,7 @@ local function OnCall(name, pay, map, x, y, test)
     if not InRange(call) then return end
     local fresh = not ns.calls[name]
     ns.calls[name] = call
-    if fresh then
+    if fresh and MayAlert(name) then
         local text = ("%s: %s %s"):format(name, L["Clickers Needed"], ns.Money(call.pay))
         ns.Alert(text)
     end
@@ -468,7 +496,7 @@ local function OnRequest(name, kind, arg)
             if ns.db.alertChat then ns.Print(text) end
             return ns.Answer(name, true)
         end
-        ns.Alert(text)
+        if MayAlert(name) then ns.Alert(text) end
     end
     ns.Refresh()
 end
@@ -529,13 +557,20 @@ local function OnMessage(msg, dist, sender)
             end
             return
         end
-        offer.name, offer.seen = name, GetTime()
+        offer.name, offer.seen, offer.sig = name, GetTime(), ns.Signature(offer)
+        local old = ns.offers[name]
+        -- A heartbeat, or the second copy of a broadcast: nothing to redraw.
+        if old and old.sig == offer.sig then
+            old.seen, old.ttl = offer.seen, offer.ttl
+            return
+        end
+        if not old and Count(ns.offers) >= OFFER_MAX then return end
         ns.offers[name] = offer
-        ns.Refresh()
+        OffersChanged()
     elseif tag == "X" then
         if ns.offers[name] then
             ns.offers[name] = nil
-            ns.Refresh()
+            OffersChanged()
         end
     elseif tag == "K" then
         OnCall(name, a, b, select(4, strsplit("\t", msg)))
@@ -546,8 +581,11 @@ local function OnMessage(msg, dist, sender)
         end
     elseif tag == "Q" then
         -- Spread the answers out; one broadcast answers every query that came in meanwhile.
-        if wasLive and not answerAt and GetTime() - lastSent > ANSWER_GAP then
-            answerAt = GetTime() + 1 + math.random() * 5
+        -- The more offers, the rarer and the more spread out the answers: with many browsers asking, every
+        -- provider would otherwise broadcast at the answer gap instead of the heartbeat.
+        local beat = Beat()
+        if wasLive and not answerAt and GetTime() - lastSent > math.max(ANSWER_GAP, beat / 2) then
+            answerAt = GetTime() + 1 + math.random() * math.max(5, math.min(60, Count(ns.offers) * 0.2))
             C_Timer.After(answerAt - GetTime() + 0.1, ns.Tick)
         end
     end

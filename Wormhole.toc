@@ -1,16 +1,17 @@
 ## Interface: 16001
 ## Title: Wormhole
-## Notes: Find and offer summons and portals on a map.
-## Notes-deDE: Beschwörungen und Portale auf einer Karte finden und anbieten.
-## Notes-frFR: Trouver et proposer invocations et portails sur une carte.
-## Notes-esES: Busca y ofrece invocaciones y portales en un mapa.
-## Notes-esMX: Busca y ofrece invocaciones y portales en un mapa.
-## Notes-itIT: Trova e offri evocazioni e portali su una mappa.
-## Notes-ptBR: Encontre e ofereça evocações e portais em um mapa.
-## Notes-ruRU: Поиск и предложение призывов и порталов на карте.
+## Notes: Find and offer summons and portals on a map. For WoW Forever.
+## Notes-deDE: Beschwörungen und Portale auf einer Karte finden und anbieten. Für WoW Forever.
+## Notes-frFR: Trouver et proposer invocations et portails sur une carte. Pour WoW Forever.
+## Notes-esES: Busca y ofrece invocaciones y portales en un mapa. Para WoW Forever.
+## Notes-esMX: Busca y ofrece invocaciones y portales en un mapa. Para WoW Forever.
+## Notes-itIT: Trova e offri evocazioni e portali su una mappa. Per WoW Forever.
+## Notes-ptBR: Encontre e ofereça evocações e portais em um mapa. Para WoW Forever.
+## Notes-ruRU: Поиск и предложение призывов и порталов на карте. Для WoW Forever.
 ## Author: Amryu
 ## Version: @project-version@
 ## X-License: MIT
+## X-Website: https://github.com/Amryu/Wormhole
 ## X-Curse-Project-ID: 1827982
 ## IconTexture: Interface\AddOns\Wormhole\media\Icon.tga
 ## OptionalDeps: ForeverCore
